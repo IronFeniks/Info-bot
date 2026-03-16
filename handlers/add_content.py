@@ -330,9 +330,9 @@ async def finish_adding(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.data.sections[section_id].buttons[button.id] = button
     db.save()
     
-    # ========== ОТПРАВЛЯЕМ ПОЛНУЮ ИНФОРМАЦИЮ АДМИНУ ==========
+    # ========== ОТПРАВЛЯЕМ ИНФОРМАЦИЮ ТОЛЬКО В ЛИЧКУ АДМИНА ==========
     try:
-        from config import BACKUP_CHAT_ID, GROUP_CHAT_ID, TOPIC_ADMIN_ID
+        from config import BACKUP_CHAT_ID
         
         # Формируем сообщение для админа
         admin_message = f"🆕 **НОВАЯ КНОПКА ДОБАВЛЕНА**\n\n"
@@ -358,19 +358,11 @@ async def finish_adding(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="Markdown"
             )
         
-        # Отправляем уведомление в админский топик
-        await context.bot.send_message(
-            chat_id=GROUP_CHAT_ID,
-            message_thread_id=TOPIC_ADMIN_ID,
-            text=f"🆕 Пользователь @{user.username or 'нет'} добавил новую кнопку **'{button.name}'** в раздел **'{db.data.sections[section_id].name}'**",
-            parse_mode="Markdown"
-        )
-        
-        logger.info(f"✅ Уведомление админу отправлено для кнопки {button.name}")
+        logger.info(f"✅ Уведомление админу отправлено в личку для кнопки {button.name}")
         
     except Exception as e:
         logger.error(f"❌ Не удалось уведомить админа: {e}")
-    # =====================================================
+    # ================================================================
     
     # Очищаем временные данные
     context.user_data.pop('adding_content', None)
