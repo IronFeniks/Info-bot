@@ -46,6 +46,13 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             callback_data=f"admin_section_{section.id}"
         )])
     
+    # Добавляем кнопку управления админами (только для главного админа)
+    if update.effective_user.id == 639212691:
+        keyboard.append([InlineKeyboardButton(
+            "👥 Управление администраторами",
+            callback_data="manage_admins"
+        )])
+    
     keyboard.append([InlineKeyboardButton(
         "◀️ Назад",
         callback_data="back_to_main"
