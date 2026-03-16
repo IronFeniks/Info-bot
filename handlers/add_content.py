@@ -134,6 +134,10 @@ async def create_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.data.sections[new_section.id] = new_section
     db.save()
     
+    # Обновляем карту разделов
+    from handlers.menu import rebuild_section_map
+    await rebuild_section_map(context)  # Исправлено: убрана опечатка
+    
     context.user_data['adding_content']['section_id'] = new_section.id
     
     await message.reply_text(
