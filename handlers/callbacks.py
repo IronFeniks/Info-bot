@@ -46,24 +46,31 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "back_to_main":
         await show_sections(update, context)
     
-    # УДАЛЕНИЕ РАЗДЕЛА (должно быть ПЕРЕД обработкой обычных разделов)
+    # УДАЛЕНИЕ РАЗДЕЛА (самый высокий приоритет)
     elif data.startswith("admin_delete_section_"):
         logger.info(f"🗑 Удаление раздела: {data}")
         await admin_delete_section_confirm(update, context)
     
-    # УДАЛЕНИЕ КНОПКИ (должно быть ПЕРЕД обработкой обычных кнопок)
-    elif data.startswith("admin_delete_") and not data.startswith("admin_delete_section_") and not data.startswith("admin_delete_yes"):
-        # Проверяем что это не специальные случаи
-        if not any(data.startswith(x) for x in ["admin_delete_photo_", "admin_delete_video_", "admin_delete_all_"]):
-            logger.info(f"🗑 Удаление кнопки: {data}")
-            await admin_delete_confirm(update, context)
-    
-    # Подтверждение удаления
-    elif data == "admin_delete_yes":
-        await admin_delete_yes(update, context)
-    
+    # Подтверждение удаления раздела
     elif data == "admin_delete_section_yes":
+        logger.info(f"✅ Подтверждение удаления раздела")
         await admin_delete_section_yes(update, context)
+    
+    # УДАЛЕНИЕ КНОПКИ
+    elif data.startswith("admin_delete_") and not any([
+        data.startswith("admin_delete_section_"),
+        data.startswith("admin_delete_photo_"),
+        data.startswith("admin_delete_video_"),
+        data.startswith("admin_delete_all_"),
+        data == "admin_delete_yes"
+    ]):
+        logger.info(f"🗑 Удаление кнопки: {data}")
+        await admin_delete_confirm(update, context)
+    
+    # Подтверждение удаления кнопки
+    elif data == "admin_delete_yes":
+        logger.info(f"✅ Подтверждение удаления кнопки")
+        await admin_delete_yes(update, context)
     
     # Меню разделов
     elif data.startswith("section_"):
