@@ -21,17 +21,17 @@ from telegram.ext import (
 from config import (
     BOT_TOKEN, BOT_NAME, BOT_VERSION, 
     GROUP_CHAT_ID, TOPIC_PUBLIC_ID, TOPIC_ADMIN_ID, 
-    ADMIN_ID, DATA_FILE  # <--- ДОБАВЛЕН DATA_FILE
+    ADMIN_ID, DATA_FILE
 )
 from database import db
 from handlers.common import start, help_command, infa_command, backup_command, error_handler
 from handlers.callbacks import callback_handler
 from handlers.add_content import (
     add_content_start, select_section, new_section, create_section,
-    enter_button_name, enter_text, skip_text, enter_photo, skip_photo,
-    enter_video, finish_adding, cancel_adding,
+    enter_button_name, enter_text, skip_text, add_photo, add_video,
+    handle_media, back_to_media_menu, finish_adding, cancel_adding,
     SELECTING_SECTION, CREATING_SECTION, ENTERING_BUTTON_NAME,
-    ENTERING_TEXT, ENTERING_PHOTO, ENTERING_VIDEO
+    ENTERING_TEXT, ADDING_MEDIA
 )
 from handlers.admin_panel import (
     admin_panel, admin_select_section, admin_show_button,
@@ -70,7 +70,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("infa", infa_command))
-    application.add_handler(CommandHandler("backup", backup_command))  # Новая команда
+    application.add_handler(CommandHandler("backup", backup_command))
     
     # ======================== ДОБАВЛЕНИЕ КОНТЕНТА (Conversation) ========================
     add_content_conv = ConversationHandler(
@@ -97,17 +97,13 @@ def main():
                 CallbackQueryHandler(skip_text, pattern="^skip_text$"),
                 CallbackQueryHandler(add_content_start, pattern="^add_content_start$")
             ],
-            ENTERING_PHOTO: [
-                MessageHandler(filters.PHOTO, enter_photo),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, enter_photo),
-                CallbackQueryHandler(skip_photo, pattern="^skip_photo$"),
-                CallbackQueryHandler(add_content_start, pattern="^add_content_start$")
-            ],
-            ENTERING_VIDEO: [
-                MessageHandler(filters.VIDEO, enter_video),
-                MessageHandler(filters.PHOTO, enter_video),
+            ADDING_MEDIA: [
+                CallbackQueryHandler(add_photo, pattern="^add_photo$"),
+                CallbackQueryHandler(add_video, pattern="^add_video$"),
+                CallbackQueryHandler(back_to_media_menu, pattern="^back_to_media_menu$"),
                 CallbackQueryHandler(finish_adding, pattern="^finish_adding$"),
-                CallbackQueryHandler(add_content_start, pattern="^add_content_start$")
+                CallbackQueryHandler(cancel_adding, pattern="^cancel_adding$"),
+                MessageHandler(filters.PHOTO | filters.VIDEO, handle_media)
             ],
         },
         fallbacks=[
