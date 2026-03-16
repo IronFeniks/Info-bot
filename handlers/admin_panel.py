@@ -1,15 +1,17 @@
 """
 Админ-панель для управления контентом
+Полная версия со всеми функциями для видео
 """
 
 import logging
-from typing import Optional
+from datetime import datetime
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 
 from database import db
 from handlers.common import check_access, is_admin
+from models import MediaItem
 from utils.validators import validate_button_name, validate_text
 from utils.helpers import safe_edit_message, send_content, get_back_button
 
@@ -177,6 +179,8 @@ async def admin_edit_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ADMIN_EDITING_CHOICE
 
 
+# ======================== РЕДАКТИРОВАНИЕ ТЕКСТА ========================
+
 async def admin_edit_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало редактирования текста"""
     query = update.callback_query
@@ -229,7 +233,7 @@ async def admin_save_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await message.reply_text("✅ Текст обновлен!")
     
-    # Возвращаемся к редактированию
+    # Возвращаемся к выбору действия
     await admin_edit_choice(update, context)
 
 
@@ -256,6 +260,8 @@ async def admin_delete_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     return ADMIN_EDITING_CHOICE
 
+
+# ======================== РЕДАКТИРОВАНИЕ ФОТО ========================
 
 async def admin_edit_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Редактирование фото"""
@@ -389,9 +395,141 @@ async def admin_delete_all_photos(update: Update, context: ContextTypes.DEFAULT_
     await admin_edit_photo(update, context)
 
 
-# Аналогичные функции для видео (admin_edit_video, admin_add_video и т.д.)
-# Для краткости я их опускаю, но они делаются по тому же принципу
+# ======================== РЕДАКТИРОВАНИЕ ВИДЕО ========================
 
+async def admin_edit_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Редактирование видео"""
+    query = update.callback_query
+    await query.answer()
+    
+    section_id = context.user_data.get('admin_section_id')
+    button_id = context.user_data.get('admin_button_id')
+    
+    button = db.data.sections[section_id].buttons[button_id]
+    
+    video_list = "\n".join([f"• Видео {i+1}" for i in range(len(button.content.videos))]) or "нет"
+    
+    keyboard = [
+        [InlineKeyboardButton("➕ Добавить видео", callback_data="admin_add_video")],
+        [InlineKeyboardButton("🗑 Удалить все видео", callback_data="admin_delete_all_videos")],
+        [InlineKeyboardButton("◀️ Отмена", callback_data=f"admin_edit_{button_id}")]
+    ]
+    
+    # Если есть видео, добавляем кнопки для удаления каждого
+    if button.content.videos:
+        for i in range(len(button.content.videos)):
+            keyboard.insert(-1, [InlineKeyboardButton(
+                f"🗑 Удалить видео {i+1}",
+                callback_data=f"admin_delete_video_{i}"
+            )])
+    
+    await safe_edit_message(
+        query,
+        f"🎥 **РЕДАКТИРОВАНИЕ ВИДЕО**\n\n"
+        f"Текущие видео:\n{video_list}\n\n"
+        f"Выберите действие:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    
+    return ADMIN_EDITING_VIDEO
+
+
+async def admin_add_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Добавление нового видео"""
+    query = update.callback_query
+    await query.answer()
+    
+    await safe_edit_message(
+        query,
+        "🎬 Отправьте видео, которое хотите добавить:",
+        reply_markup=get_back_button("admin_edit_video")
+    )
+    
+    context.user_data['admin_adding_video'] = True
+    return ADMIN_EDITING_VIDEO
+
+
+async def admin_save_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сохранение добавленного видео"""
+    message = update.effective_message
+    
+    if not message.video:
+        await message.reply_text("❌ Пожалуйста, отправьте видео")
+        return ADMIN_EDITING_VIDEO
+    
+    if not context.user_data.get('admin_adding_video'):
+        return ADMIN_EDITING_VIDEO
+    
+    video = message.video
+    
+    # Создаем бэкап
+    backup = await db.backup_media(context, video.file_id, "video")
+    
+    section_id = context.user_data.get('admin_section_id')
+    button_id = context.user_data.get('admin_button_id')
+    
+    button = db.data.sections[section_id].buttons[button_id]
+    button.content.videos.append(MediaItem(file_id=video.file_id, backup=backup))
+    button.edited_by = update.effective_user.id
+    button.edited_at = datetime.now().isoformat()
+    
+    db.save()
+    
+    context.user_data['admin_adding_video'] = False
+    
+    await message.reply_text("✅ Видео добавлено!")
+    
+    # Возвращаемся к меню видео
+    await admin_edit_video(update, context)
+
+
+async def admin_delete_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Удаление конкретного видео"""
+    query = update.callback_query
+    await query.answer()
+    
+    index = int(query.data.replace("admin_delete_video_", ""))
+    
+    section_id = context.user_data.get('admin_section_id')
+    button_id = context.user_data.get('admin_button_id')
+    
+    button = db.data.sections[section_id].buttons[button_id]
+    
+    if 0 <= index < len(button.content.videos):
+        button.content.videos.pop(index)
+        button.edited_by = update.effective_user.id
+        button.edited_at = datetime.now().isoformat()
+        db.save()
+        await query.edit_message_text("✅ Видео удалено!")
+    else:
+        await query.edit_message_text("❌ Ошибка удаления")
+    
+    # Возвращаемся к меню видео
+    await admin_edit_video(update, context)
+
+
+async def admin_delete_all_videos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Удаление всех видео"""
+    query = update.callback_query
+    await query.answer()
+    
+    section_id = context.user_data.get('admin_section_id')
+    button_id = context.user_data.get('admin_button_id')
+    
+    button = db.data.sections[section_id].buttons[button_id]
+    button.content.videos = []
+    button.edited_by = update.effective_user.id
+    button.edited_at = datetime.now().isoformat()
+    
+    db.save()
+    
+    await query.edit_message_text("✅ Все видео удалены!")
+    
+    # Возвращаемся к меню видео
+    await admin_edit_video(update, context)
+
+
+# ======================== УДАЛЕНИЕ КНОПКИ ========================
 
 async def admin_delete_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Подтверждение удаления кнопки"""
@@ -467,3 +605,5 @@ async def admin_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await admin_select_section(update, context)
     else:
         await admin_panel(update, context)
+    
+    return ADMIN_SELECTING_SECTION
