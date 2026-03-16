@@ -3,9 +3,8 @@
 """
 
 import logging
-from typing import Optional
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
 from telegram.ext import ContextTypes
 
 from config import (
@@ -26,6 +25,17 @@ async def check_access(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
     if not message:
         return False
     
+    # Логируем ВСЕ входящие сообщения для отладки
+    user = update.effective_user
+    chat = update.effective_chat
+    
+    logger.info(f"📨 Входящее сообщение: chat_id={message.chat_id}, "
+                f"chat_type={chat.type if chat else 'unknown'}, "
+                f"thread_id={message.message_thread_id}, "
+                f"user_id={user.id if user else 'None'}, "
+                f"username=@{user.username if user and user.username else 'None'}, "
+                f"text={message.text if message.text else 'non-text'}")
+    
     # Проверяем, что сообщение из нужной группы
     if message.chat_id != GROUP_CHAT_ID:
         logger.warning(f"Попытка использования из чата {message.chat_id}")
@@ -37,6 +47,7 @@ async def check_access(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
     # Для администратора разрешены оба топика
     if user_id == ADMIN_ID:
         if message_thread_id in (TOPIC_PUBLIC_ID, TOPIC_ADMIN_ID):
+            logger.info(f"✅ Доступ разрешен админу в топике {message_thread_id}")
             return True
         else:
             logger.warning(f"Админ попытался использовать топик {message_thread_id}")
@@ -44,6 +55,7 @@ async def check_access(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
     
     # Для обычных пользователей только публичный топик
     if message_thread_id == TOPIC_PUBLIC_ID:
+        logger.info(f"✅ Доступ разрешен пользователю в публичном топике")
         return True
     else:
         logger.warning(f"Пользователь {user_id} попытался использовать топик {message_thread_id}")
@@ -128,9 +140,29 @@ async def infa_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_content(update, context, section_id, button_id)
 
 
+async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Команда /backup - отправляет копию базы данных админу
+    """
+    if not await check_access(update, context):
+        return
+    
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("⛔ Только для администратора")
+        return
+    
+    await update.message.reply_text("🔄 Создание бэкапа...")
+    success = await db.auto_backup(context)
+    
+    if success:
+        await update.message.reply_text("✅ Бэкап отправлен в личные сообщения")
+    else:
+        await update.message.reply_text("❌ Ошибка создания бэкапа")
+
+
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик ошибок"""
-    logger.error(f"Ошибка: {context.error}", exc_info=context.error)
+    logger.error(f"❌ Ошибка: {context.error}", exc_info=context.error)
     
     try:
         if update and update.effective_message:
