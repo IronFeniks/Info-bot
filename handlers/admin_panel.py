@@ -1,6 +1,6 @@
 """
 Админ-панель для управления контентом
-Полная версия со всеми функциями для видео
+Полная версия с удалением разделов
 """
 
 import logging
@@ -25,8 +25,9 @@ logger = logging.getLogger(__name__)
     ADMIN_EDITING_TEXT,
     ADMIN_EDITING_PHOTO,
     ADMIN_EDITING_VIDEO,
-    ADMIN_DELETING_CONFIRM
-) = range(7)
+    ADMIN_DELETING_CONFIRM,
+    ADMIN_DELETING_SECTION_CONFIRM  # Новое состояние
+) = range(8)
 
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -41,10 +42,18 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Показываем список разделов для управления
     keyboard = []
     for section in db.data.sections.values():
-        keyboard.append([InlineKeyboardButton(
-            f"📁 {section.name}",
-            callback_data=f"admin_section_{section.id}"
-        )])
+        # Добавляем кнопку раздела и кнопку удаления
+        row = [
+            InlineKeyboardButton(
+                f"📁 {section.name}",
+                callback_data=f"admin_section_{section.id}"
+            ),
+            InlineKeyboardButton(
+                "🗑",
+                callback_data=f"admin_delete_section_{section.id}"
+            )
+        ]
+        keyboard.append(row)
     
     # Добавляем кнопку управления админами (только для главного админа)
     if update.effective_user.id == 639212691:
@@ -61,8 +70,87 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await safe_edit_message(
         query,
         "🔧 **АДМИН-ПАНЕЛЬ**\n\n"
-        "Выберите раздел для управления:",
+        "Выберите раздел для управления:\n"
+        "• 📁 - открыть раздел\n"
+        "• 🗑 - удалить раздел",
         reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    
+    return ADMIN_SELECTING_SECTION
+
+
+async def admin_delete_section_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Подтверждение удаления раздела"""
+    query = update.callback_query
+    await query.answer()
+    
+    section_id = query.data.replace("admin_delete_section_", "")
+    section = db.data.sections.get(section_id)
+    
+    if not section:
+        await query.edit_message_text("❌ Раздел не найден")
+        return ADMIN_SELECTING_SECTION
+    
+    context.user_data['admin_delete_section_id'] = section_id
+    
+    # Считаем количество кнопок в разделе
+    buttons_count = len(section.buttons)
+    
+    keyboard = [
+        [InlineKeyboardButton("✅ Да, удалить раздел", callback_data="admin_delete_section_yes")],
+        [InlineKeyboardButton("❌ Нет, отмена", callback_data="admin_panel")]
+    ]
+    
+    await safe_edit_message(
+        query,
+        f"🗑 **ПОДТВЕРЖДЕНИЕ УДАЛЕНИЯ РАЗДЕЛА**\n\n"
+        f"Раздел: **{section.name}**\n"
+        f"Кнопок в разделе: {buttons_count}\n\n"
+        f"⚠️ **Внимание!**\n"
+        f"• Все кнопки в этом разделе будут удалены\n"
+        f"• Все фото и видео в этих кнопках будут потеряны\n"
+        f"• Это действие нельзя отменить\n\n"
+        f"Вы действительно хотите удалить этот раздел?",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    
+    return ADMIN_DELETING_SECTION_CONFIRM
+
+
+async def admin_delete_section_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Фактическое удаление раздела"""
+    query = update.callback_query
+    await query.answer()
+    
+    section_id = context.user_data.get('admin_delete_section_id')
+    
+    if not section_id:
+        await query.edit_message_text("❌ Ошибка: раздел не выбран")
+        return ADMIN_SELECTING_SECTION
+    
+    section = db.data.sections.get(section_id)
+    
+    if not section:
+        await query.edit_message_text("❌ Раздел не найден")
+        return ADMIN_SELECTING_SECTION
+    
+    section_name = section.name
+    buttons_count = len(section.buttons)
+    
+    # Удаляем раздел
+    del db.data.sections[section_id]
+    db.save()
+    
+    # Очищаем временные данные
+    context.user_data.pop('admin_delete_section_id', None)
+    
+    await safe_edit_message(
+        query,
+        f"✅ **РАЗДЕЛ УДАЛЕН**\n\n"
+        f"Раздел: **{section_name}**\n"
+        f"Удалено кнопок: {buttons_count}\n\n"
+        f"Раздел успешно удален из базы данных.",
+        reply_markup=get_back_button("admin_panel")
     )
     
     return ADMIN_SELECTING_SECTION
@@ -105,6 +193,12 @@ async def admin_select_section(update: Update, context: ContextTypes.DEFAULT_TYP
             "📭 В разделе нет кнопок",
             callback_data="admin_noop"
         )])
+    
+    # Добавляем кнопку для добавления новой кнопки
+    keyboard.append([InlineKeyboardButton(
+        "➕ Добавить новую кнопку",
+        callback_data=f"add_in_section_{section_id}"
+    )])
     
     keyboard.append([InlineKeyboardButton(
         "◀️ Назад к разделам",
@@ -562,7 +656,7 @@ async def admin_delete_confirm(update: Update, context: ContextTypes.DEFAULT_TYP
     
     await safe_edit_message(
         query,
-        f"🗑 **ПОДТВЕРЖДЕНИЕ УДАЛЕНИЯ**\n\n"
+        f"🗑 **ПОДТВЕРЖДЕНИЕ УДАЛЕНИЯ КНОПКИ**\n\n"
         f"Вы действительно хотите удалить кнопку **{button.name}**?\n\n"
         f"Это действие нельзя отменить.",
         reply_markup=InlineKeyboardMarkup(keyboard)
