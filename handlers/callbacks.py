@@ -21,7 +21,8 @@ from handlers.admin_panel import (
     admin_edit_photo, admin_add_photo, admin_delete_photo,
     admin_delete_all_photos, admin_edit_video, admin_add_video,
     admin_delete_video, admin_delete_all_videos, admin_delete_confirm,
-    admin_delete_yes, admin_cancel
+    admin_delete_yes, admin_cancel, admin_delete_section_confirm,
+    admin_delete_section_yes
 )
 from utils.helpers import safe_edit_message
 
@@ -45,30 +46,40 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "back_to_main":
         await show_sections(update, context)
     
+    # УДАЛЕНИЕ РАЗДЕЛА (должно быть ПЕРЕД обработкой обычных разделов)
+    elif data.startswith("admin_delete_section_"):
+        logger.info(f"🗑 Удаление раздела: {data}")
+        await admin_delete_section_confirm(update, context)
+    
+    # УДАЛЕНИЕ КНОПКИ (должно быть ПЕРЕД обработкой обычных кнопок)
+    elif data.startswith("admin_delete_") and not data.startswith("admin_delete_section_") and not data.startswith("admin_delete_yes"):
+        # Проверяем что это не специальные случаи
+        if not any(data.startswith(x) for x in ["admin_delete_photo_", "admin_delete_video_", "admin_delete_all_"]):
+            logger.info(f"🗑 Удаление кнопки: {data}")
+            await admin_delete_confirm(update, context)
+    
+    # Подтверждение удаления
+    elif data == "admin_delete_yes":
+        await admin_delete_yes(update, context)
+    
+    elif data == "admin_delete_section_yes":
+        await admin_delete_section_yes(update, context)
+    
     # Меню разделов
     elif data.startswith("section_"):
         short_key = data.replace("section_", "")
-        
-        # Получаем реальный ID раздела из карты
         section_id = context.bot_data.get('section_map', {}).get(short_key)
-        
         if section_id:
             logger.info(f"📁 Открытие раздела: {section_id}")
             await show_section(update, context, section_id)
         else:
             logger.error(f"❌ Раздел не найден по ключу: {short_key}")
-            # Показываем доступные ключи для отладки
-            available_keys = list(context.bot_data.get('section_map', {}).keys())
-            logger.error(f"📋 Доступные ключи: {available_keys}")
-            await query.edit_message_text("❌ Раздел не найден. Попробуйте обновить меню через /start")
+            await query.edit_message_text("❌ Раздел не найден")
     
     # Меню кнопок
     elif data.startswith("button_"):
         map_key = data.replace("button_", "")
-        
-        # Получаем информацию о кнопке из карты
         button_info = context.bot_data.get('button_map', {}).get(map_key)
-        
         if button_info:
             section_id = button_info['section_id']
             button_id = button_info['button_id']
@@ -148,12 +159,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif data == "admin_delete_all_videos":
         await admin_delete_all_videos(update, context)
-    
-    elif data.startswith("admin_delete_") and not data.startswith("admin_delete_yes"):
-        await admin_delete_confirm(update, context)
-    
-    elif data == "admin_delete_yes":
-        await admin_delete_yes(update, context)
     
     # Управление администраторами
     elif data == "manage_admins":
