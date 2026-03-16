@@ -6,7 +6,9 @@ Telegram бот для управления контентом в топиках
 
 import logging
 import warnings
+import asyncio
 from telegram.warnings import PTBUserWarning
+from telegram.error import NetworkError, TimedOut
 
 from telegram import Update
 from telegram.ext import (
@@ -109,11 +111,35 @@ async def rebuild_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Карты успешно перестроены!")
 
 
+# ======================== ОБРАБОТЧИК СЕТЕВЫХ ОШИБОК ========================
+async def network_error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Специальный обработчик для сетевых ошибок"""
+    if isinstance(context.error, (NetworkError, TimedOut)):
+        logger.warning(f"🌐 Сетевая ошибка: {context.error}. Пробуем восстановить соединение...")
+        # Даем время на восстановление
+        await asyncio.sleep(2)
+        # Пробуем переподключиться
+        if update and update.effective_message:
+            await update.effective_message.reply_text(
+                "⚠️ Временная проблема с соединением. Пожалуйста, попробуйте еще раз через несколько секунд."
+            )
+        return True
+    return False
+
+
 def main():
     """Главная функция запуска бота"""
     
-    # Создаем приложение
-    application = Application.builder().token(BOT_TOKEN).build()
+    # Создаем приложение с увеличенными таймаутами
+    application = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .connect_timeout(30.0)
+        .read_timeout(30.0)
+        .write_timeout(30.0)
+        .pool_timeout(30.0)
+        .build()
+    )
     
     # ======================== ОБЫЧНЫЕ КОМАНДЫ ========================
     application.add_handler(CommandHandler("start", start))
@@ -257,7 +283,10 @@ def main():
         handle_message_fallback
     ))
     
-    # ======================== ОБРАБОТЧИК ОШИБОК ========================
+    # ======================== ОБРАБОТЧИКИ ОШИБОК ========================
+    # Сначала пробуем обработать сетевые ошибки
+    application.add_error_handler(network_error_handler)
+    # Потом общий обработчик
     application.add_error_handler(error_handler)
     
     # ======================== ЗАПУСК ========================
@@ -271,10 +300,38 @@ def main():
     
     # Перестраиваем карты при запуске
     logger.info("🔄 Перестройка карт при запуске...")
-    force_rebuild_maps(application.bot_data)
     
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Создаем временный контекст для перестройки карт
+    class TempContext:
+        def __init__(self):
+            self.bot_data = {}
+    
+    temp_context = TempContext()
+    force_rebuild_maps(temp_context)
+    
+    # Копируем карты в application.bot_data
+    application.bot_data['section_map'] = temp_context.bot_data.get('section_map', {})
+    application.bot_data['button_map'] = temp_context.bot_data.get('button_map', {})
+    
+    logger.info(f"📊 Загружено разделов: {len(application.bot_data['section_map'])}")
+    logger.info(f"📊 Загружено кнопок: {len(application.bot_data['button_map'])}")
+    
+    # Запускаем с увеличенным интервалом между запросами
+    application.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        poll_interval=1.0,  # Увеличиваем интервал
+        timeout=30  # Увеличиваем таймаут
+    )
 
 
 if __name__ == "__main__":
-    main()
+    # Добавляем обработку прерываний
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.info("👋 Бот остановлен пользователем")
+    except Exception as e:
+        logger.error(f"❌ Критическая ошибка: {e}")
+        # Даем время на запись лога
+        import time
+        time.sleep(2)
