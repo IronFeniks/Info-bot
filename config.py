@@ -16,7 +16,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "8338311043:AAEhluAcqzKPxN9dRsxVVW4trZ7K-_0Dj
 # ID администратора
 ADMIN_ID = int(os.getenv("ADMIN_ID", "639212691"))
 
-# ID группы (чат) - ИСПРАВЛЕНО НА ОСНОВЕ ЛОГА
+# ID группы (чат)
 GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "-1003300908374"))
 
 # ID топиков
@@ -24,12 +24,22 @@ TOPIC_PUBLIC_ID = int(os.getenv("TOPIC_PUBLIC_ID", "18"))     # Топик 1 - �
 TOPIC_ADMIN_ID = int(os.getenv("TOPIC_ADMIN_ID", "4"))        # Топик 2 - для команды /infa
 
 # ======================== ФАЙЛЫ ========================
-DATA_FILE = "bot_data.json"           # Основное хранилище
-BACKUP_CHAT_ID = ADMIN_ID              # Куда дублировать медиа (личка админа)
+# Определяем корневую директорию проекта
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Путь к папке data (создайте её в BotHost)
+DATA_DIR = os.path.join(BASE_DIR, "data")
+DATA_FILE = os.path.join(DATA_DIR, "bot_data.json")
+
+# Создаем папку data, если её нет
+os.makedirs(DATA_DIR, exist_ok=True)
+
+# Куда дублировать медиа (личка админа)
+BACKUP_CHAT_ID = ADMIN_ID
 
 # ======================== НАСТРОЙКИ БОТА ========================
-BOT_NAME = "Topic Content Bot"         # <--- ДОБАВЛЕНО
-BOT_VERSION = "1.0.0"                  # <--- ДОБАВЛЕНО
+BOT_NAME = "Topic Content Bot"
+BOT_VERSION = "1.0.0"
 
 # Сообщения
 WELCOME_MESSAGE = """
