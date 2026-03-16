@@ -13,6 +13,7 @@ from models import Section, Button, MediaItem
 from handlers.common import check_access
 from utils.validators import validate_section_name, validate_button_name, validate_text
 from utils.helpers import get_back_button, safe_edit_message
+from handlers.menu import rebuild_section_map, rebuild_button_map
 
 logger = logging.getLogger(__name__)
 
@@ -135,8 +136,8 @@ async def create_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.save()
     
     # Обновляем карту разделов
-    from handlers.menu import rebuild_section_map
-    await rebuild_section_map(context)  # Исправлено: убрана опечатка
+    rebuild_section_map(context)
+    logger.info(f"✅ Карта разделов обновлена после создания нового раздела: {section_name}")
     
     context.user_data['adding_content']['section_id'] = new_section.id
     
@@ -419,6 +420,10 @@ async def finish_adding(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Сохраняем кнопку
     db.data.sections[section_id].buttons[button.id] = button
     db.save()
+    
+    # Обновляем карту кнопок
+    rebuild_button_map(context)
+    logger.info(f"✅ Карта кнопок обновлена после создания новой кнопки: {button.name}")
     
     # ========== ОТПРАВЛЯЕМ ИНФОРМАЦИЮ ТОЛЬКО В ЛИЧКУ АДМИНА ==========
     try:
