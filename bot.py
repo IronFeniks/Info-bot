@@ -5,8 +5,8 @@ Telegram бот для управления контентом в топиках
 """
 
 import logging
-import asyncio
 
+from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -16,7 +16,7 @@ from telegram.ext import (
     ConversationHandler,
 )
 
-from config import BOT_TOKEN, BOT_NAME, BOT_VERSION
+from config import BOT_TOKEN, BOT_NAME, BOT_VERSION, GROUP_CHAT_ID, TOPIC_PUBLIC_ID, TOPIC_ADMIN_ID, ADMIN_ID
 from database import db
 from handlers.common import start, help_command, infa_command, error_handler
 from handlers.callbacks import callback_handler
@@ -25,7 +25,7 @@ from handlers.add_content import (
     enter_button_name, enter_text, skip_text, enter_photo, skip_photo,
     enter_video, finish_adding, cancel_adding,
     SELECTING_SECTION, CREATING_SECTION, ENTERING_BUTTON_NAME,
-    ENTERING_TEXT, ENTERING_PHOTO, ENTERING_VIDEO, CONFIRMATION
+    ENTERING_TEXT, ENTERING_PHOTO, ENTERING_VIDEO
 )
 from handlers.admin_panel import (
     admin_panel, admin_select_section, admin_show_button,
@@ -85,13 +85,13 @@ def main():
             ],
             ENTERING_PHOTO: [
                 MessageHandler(filters.PHOTO, enter_photo),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, enter_photo),  # Если текст без фото
+                MessageHandler(filters.TEXT & ~filters.COMMAND, enter_photo),
                 CallbackQueryHandler(skip_photo, pattern="^skip_photo$"),
                 CallbackQueryHandler(add_content_start, pattern="^add_content_start$")
             ],
             ENTERING_VIDEO: [
                 MessageHandler(filters.VIDEO, enter_video),
-                MessageHandler(filters.PHOTO, enter_video),  # Если еще фото
+                MessageHandler(filters.PHOTO, enter_video),
                 CallbackQueryHandler(finish_adding, pattern="^finish_adding$"),
                 CallbackQueryHandler(add_content_start, pattern="^add_content_start$")
             ],
@@ -139,6 +139,13 @@ def main():
                 MessageHandler(filters.PHOTO, admin_save_photo),
                 CallbackQueryHandler(admin_edit_choice, pattern="^admin_edit_")
             ],
+            ADMIN_EDITING_VIDEO: [
+                CallbackQueryHandler(admin_add_video, pattern="^admin_add_video$"),
+                CallbackQueryHandler(admin_delete_video, pattern="^admin_delete_video_"),
+                CallbackQueryHandler(admin_delete_all_videos, pattern="^admin_delete_all_videos$"),
+                MessageHandler(filters.VIDEO, admin_save_video),
+                CallbackQueryHandler(admin_edit_choice, pattern="^admin_edit_")
+            ],
             ADMIN_DELETING_CONFIRM: [
                 CallbackQueryHandler(admin_delete_yes, pattern="^admin_delete_yes$"),
                 CallbackQueryHandler(admin_select_section, pattern="^admin_section_")
@@ -154,11 +161,14 @@ def main():
     application.add_handler(admin_conv)
     
     # ======================== ОБЩИЙ ОБРАБОТЧИК CALLBACK ========================
-    # (ловим все остальные callback)
     application.add_handler(CallbackQueryHandler(callback_handler))
     
     # ======================== ОБРАБОТЧИК СООБЩЕНИЙ ========================
-    # Обычные сообщения (не попавшие в Conversation)
+    async def handle_message_fallback(update: Update, context):
+        """Обработчик сообщений, не попавших в другие хендлеры"""
+        # Игнорируем все сообщения, не попавшие в диалоги
+        pass
+    
     application.add_handler(MessageHandler(
         filters.TEXT | filters.PHOTO | filters.VIDEO,
         handle_message_fallback
@@ -176,13 +186,6 @@ def main():
     logger.info("=" * 40)
     
     application.run_polling(allowed_updates=Update.ALL_TYPES)
-
-
-async def handle_message_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик сообщений, не попавших в другие хендлеры"""
-    # Здесь можно добавить логику, например, если пользователь просто пишет в чат
-    # Но по задаче мы игнорируем такие сообщения
-    pass
 
 
 if __name__ == "__main__":
