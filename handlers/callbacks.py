@@ -23,6 +23,7 @@ from handlers.admin_panel import (
     admin_delete_video, admin_delete_all_videos, admin_delete_confirm,
     admin_delete_yes, admin_cancel
 )
+from utils.helpers import safe_edit_message  # <--- ВАЖНЫЙ ИМПОРТ
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +127,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "admin_delete_all_videos":
         await admin_delete_all_videos(update, context)
     
-    elif data.startswith("admin_delete_") and not data.startswith("admin_delete_"):
+    elif data.startswith("admin_delete_") and not data.startswith("admin_delete_yes"):
         await admin_delete_confirm(update, context)
     
     elif data == "admin_delete_yes":
