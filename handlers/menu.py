@@ -3,6 +3,7 @@
 """
 
 import logging
+import hashlib
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -14,19 +15,34 @@ from utils.helpers import safe_edit_message, send_content, get_main_keyboard
 logger = logging.getLogger(__name__)
 
 
+def shorten_id(id_string: str) -> str:
+    """
+    Сокращает длинный UUID до короткого хеша (8 символов)
+    """
+    return hashlib.md5(id_string.encode()).hexdigest()[:8]
+
+
 async def show_sections(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает список разделов (главное меню)"""
     query = update.callback_query
     user = update.effective_user
+    
+    # Очищаем старые соответствия
+    if 'section_map' not in context.bot_data:
+        context.bot_data['section_map'] = {}
     
     # Создаем клавиатуру с разделами
     keyboard = []
     
     # Добавляем кнопки разделов
     for section in db.data.sections.values():
-        # Используем прямой ID раздела
-        callback_data = f"section_{section.id}"
-        logger.info(f"🔧 Создана кнопка раздела: {callback_data}")
+        # Создаем короткий ключ
+        short_key = shorten_id(section.id)
+        # Сохраняем соответствие короткого ключа и реального ID
+        context.bot_data['section_map'][short_key] = section.id
+        
+        callback_data = f"sec_{short_key}"
+        logger.info(f"🔧 Создана кнопка раздела: {callback_data} -> {section.name}")
         keyboard.append([InlineKeyboardButton(
             f"📁 {section.name}",
             callback_data=callback_data
@@ -73,10 +89,23 @@ async def show_section(update: Update, context: ContextTypes.DEFAULT_TYPE, secti
     
     logger.info(f"✅ Раздел найден: {section.name}")
     
+    # Очищаем старые соответствия для кнопок
+    if 'button_map' not in context.bot_data:
+        context.bot_data['button_map'] = {}
+    
     # Формируем клавиатуру с кнопками раздела
     keyboard = []
     for button in section.buttons.values():
-        callback_data = f"button_{section_id}_{button.id}"
+        # Создаем короткий ключ для кнопки
+        short_key = shorten_id(button.id)
+        # Сохраняем соответствие
+        map_key = f"{shorten_id(section.id)}_{short_key}"
+        context.bot_data['button_map'][map_key] = {
+            'section_id': section.id,
+            'button_id': button.id
+        }
+        
+        callback_data = f"btn_{map_key}"
         keyboard.append([InlineKeyboardButton(
             f"🔘 {button.name}",
             callback_data=callback_data
@@ -87,7 +116,7 @@ async def show_section(update: Update, context: ContextTypes.DEFAULT_TYPE, secti
     if is_admin(user.id):
         keyboard.append([InlineKeyboardButton(
             "➕ Добавить кнопку в этот раздел",
-            callback_data=f"add_in_section_{section_id}"
+            callback_data=f"add_in_section_{section.id}"
         )])
     
     keyboard.append([InlineKeyboardButton(
