@@ -10,7 +10,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 
 from database import db
 from models import Section, Button, MediaItem
-from handlers.common import check_access, is_admin
+from handlers.common import check_access
 from utils.validators import validate_section_name, validate_button_name, validate_text
 from utils.helpers import get_back_button, safe_edit_message
 
@@ -22,10 +22,9 @@ logger = logging.getLogger(__name__)
     CREATING_SECTION,
     ENTERING_BUTTON_NAME,
     ENTERING_TEXT,
-    ENTERING_PHOTO,
-    ENTERING_VIDEO,
+    ADDING_MEDIA,  # Объединенное состояние для фото и видео
     CONFIRMATION
-) = range(7)
+) = range(6)
 
 
 async def add_content_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -38,7 +37,10 @@ async def add_content_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     
     # Сохраняем временные данные
-    context.user_data['adding_content'] = {}
+    context.user_data['adding_content'] = {
+        'photos': [],  # Список для фото
+        'videos': []   # Список для видео
+    }
     
     # Показываем список разделов для выбора
     keyboard = []
@@ -61,7 +63,7 @@ async def add_content_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await safe_edit_message(
         query,
         "🆕 **ДОБАВЛЕНИЕ НОВОЙ ИНФОРМАЦИИ**\n\n"
-        "Шаг 1 из 5: Выберите раздел для новой кнопки:",
+        "Шаг 1 из 4: Выберите раздел для новой кнопки:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
     
@@ -87,7 +89,7 @@ async def select_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
         query,
         f"🆕 **ДОБАВЛЕНИЕ НОВОЙ ИНФОРМАЦИИ**\n\n"
         f"Выбран раздел: **{section.name}**\n\n"
-        f"Шаг 2 из 5: Введите название кнопки.\n"
+        f"Шаг 2 из 4: Введите название кнопки.\n"
         f"Название должно быть уникальным в этом разделе.",
         reply_markup=get_back_button("add_content_start")
     )
@@ -136,7 +138,7 @@ async def create_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await message.reply_text(
         f"✅ Раздел **{section_name}** создан!\n\n"
-        f"Шаг 2 из 5: Введите название кнопки:",
+        f"Шаг 2 из 4: Введите название кнопки:",
         parse_mode="Markdown"
     )
     
@@ -164,11 +166,12 @@ async def enter_button_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Создаем новую кнопку
     new_button = Button.create(button_name, user.id)
     context.user_data['adding_content']['button'] = new_button
+    context.user_data['adding_content']['button_name'] = button_name
     
     # Переходим к вводу текста
     await message.reply_text(
         f"✅ Название кнопки: **{button_name}**\n\n"
-        f"Шаг 3 из 5: Добавьте текст (необязательно).\n"
+        f"Шаг 3 из 4: Добавьте текст (необязательно).\n"
         f"Просто отправьте текст или нажмите кнопку 'Пропустить'.",
         reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton("⏭ Пропустить", callback_data="skip_text")
@@ -192,17 +195,10 @@ async def enter_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         context.user_data['adding_content']['button'].content.text = text
     
-    # Переходим к фото
-    await message.reply_text(
-        "✅ Текст сохранен (если был введен).\n\n"
-        "Шаг 4 из 5: Добавьте фото (необязательно).\n"
-        "Отправьте фото или нажмите 'Пропустить'.",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("⏭ Пропустить", callback_data="skip_photo")
-        ]])
-    )
+    # Переходим к добавлению медиа
+    await show_media_menu(update, context)
     
-    return ENTERING_PHOTO
+    return ADDING_MEDIA
 
 
 async def skip_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -213,88 +209,157 @@ async def skip_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await safe_edit_message(
         query,
         "⏭ Текст пропущен.\n\n"
-        "Шаг 4 из 5: Добавьте фото (необязательно).\n"
-        "Отправьте фото или нажмите 'Пропустить'.",
+        "Шаг 4 из 4: Добавьте фото и/или видео.\n"
+        "Вы можете добавлять несколько файлов.",
+        reply_markup=get_media_menu_keyboard(context)
+    )
+    
+    return ADDING_MEDIA
+
+
+def get_media_menu_keyboard(context):
+    """Создает клавиатуру для меню добавления медиа"""
+    keyboard = []
+    
+    # Показываем текущее количество
+    photos_count = len(context.user_data['adding_content'].get('photos', []))
+    videos_count = len(context.user_data['adding_content'].get('videos', []))
+    
+    status = f"📊 Загружено: фото {photos_count} шт., видео {videos_count} шт."
+    
+    keyboard.append([InlineKeyboardButton("📸 Добавить фото", callback_data="add_photo")])
+    keyboard.append([InlineKeyboardButton("🎥 Добавить видео", callback_data="add_video")])
+    
+    if photos_count > 0 or videos_count > 0:
+        keyboard.append([InlineKeyboardButton("✅ Завершить добавление", callback_data="finish_adding")])
+    
+    keyboard.append([InlineKeyboardButton("◀️ Отмена", callback_data="cancel_adding")])
+    
+    return InlineKeyboardMarkup(keyboard)
+
+
+async def show_media_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает меню для добавления медиа"""
+    if update.callback_query:
+        query = update.callback_query
+        await query.answer()
+        message = query.message
+    else:
+        message = update.effective_message
+    
+    photos_count = len(context.user_data['adding_content'].get('photos', []))
+    videos_count = len(context.user_data['adding_content'].get('videos', []))
+    
+    text = (
+        f"📸 **ДОБАВЛЕНИЕ МЕДИА**\n\n"
+        f"Кнопка: **{context.user_data['adding_content'].get('button_name', '')}**\n"
+        f"Текст: {'✅' if context.user_data['adding_content']['button'].content.text else '❌'}\n\n"
+        f"📊 Загружено:\n"
+        f"• Фото: {photos_count} шт.\n"
+        f"• Видео: {videos_count} шт.\n\n"
+        f"Вы можете добавлять несколько фото и видео.\n"
+        f"После добавления всех файлов нажмите 'Завершить'."
+    )
+    
+    await message.reply_text(
+        text,
+        reply_markup=get_media_menu_keyboard(context),
+        parse_mode="Markdown"
+    )
+
+
+async def add_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начало добавления фото"""
+    query = update.callback_query
+    await query.answer()
+    
+    context.user_data['adding_content']['waiting_for'] = 'photo'
+    
+    await safe_edit_message(
+        query,
+        "📸 Отправьте фото (можно несколько, по одному).\n"
+        "После отправки всех фото нажмите 'Готово'.",
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("⏭ Пропустить", callback_data="skip_photo")
+            InlineKeyboardButton("✅ Готово", callback_data="back_to_media_menu")
         ]])
     )
     
-    return ENTERING_PHOTO
+    return ADDING_MEDIA
 
 
-async def enter_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка получения фото"""
-    message = update.effective_message
+async def add_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начало добавления видео"""
+    query = update.callback_query
+    await query.answer()
     
-    if message.photo:
+    context.user_data['adding_content']['waiting_for'] = 'video'
+    
+    await safe_edit_message(
+        query,
+        "🎥 Отправьте видео (можно несколько, по одному).\n"
+        "После отправки всех видео нажмите 'Готово'.",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ Готово", callback_data="back_to_media_menu")
+        ]])
+    )
+    
+    return ADDING_MEDIA
+
+
+async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка получения фото или видео"""
+    message = update.effective_message
+    waiting_for = context.user_data['adding_content'].get('waiting_for')
+    
+    if waiting_for == 'photo' and message.photo:
         # Берем самое большое фото
         photo = message.photo[-1]
         
         # Создаем бэкап
         backup = await db.backup_media(context, photo.file_id, "photo")
         
-        # Добавляем фото к кнопке
+        # Добавляем фото в список
         media_item = MediaItem(file_id=photo.file_id, backup=backup)
-        context.user_data['adding_content']['button'].content.photos.append(media_item)
+        if 'photos' not in context.user_data['adding_content']:
+            context.user_data['adding_content']['photos'] = []
+        context.user_data['adding_content']['photos'].append(media_item)
         
         await message.reply_text(
-            "✅ Фото сохранено.\n\n"
-            "Шаг 5 из 5: Добавьте видео (необязательно).\n"
-            "Отправьте видео или нажмите 'Завершить'.",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("✅ Завершить", callback_data="finish_adding")
-            ]])
+            f"✅ Фото {len(context.user_data['adding_content']['photos'])} добавлено!\n"
+            f"Можете отправить еще фото или нажмите 'Готово'."
         )
+        return ADDING_MEDIA
         
-        return ENTERING_VIDEO
-    
-    # Если нет фото, просто переходим к видео
-    await message.reply_text(
-        "Шаг 5 из 5: Добавьте видео (необязательно).\n"
-        "Отправьте видео или нажмите 'Завершить'.",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("✅ Завершить", callback_data="finish_adding")
-        ]])
-    )
-    
-    return ENTERING_VIDEO
-
-
-async def skip_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Пропуск добавления фото"""
-    query = update.callback_query
-    await query.answer()
-    
-    await safe_edit_message(
-        query,
-        "⏭ Фото пропущено.\n\n"
-        "Шаг 5 из 5: Добавьте видео (необязательно).\n"
-        "Отправьте видео или нажмите 'Завершить'.",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("✅ Завершить", callback_data="finish_adding")
-        ]])
-    )
-    
-    return ENTERING_VIDEO
-
-
-async def enter_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка получения видео"""
-    message = update.effective_message
-    
-    if message.video:
+    elif waiting_for == 'video' and message.video:
         # Создаем бэкап
         backup = await db.backup_media(context, message.video.file_id, "video")
         
-        # Добавляем видео к кнопке
+        # Добавляем видео в список
         media_item = MediaItem(file_id=message.video.file_id, backup=backup)
-        context.user_data['adding_content']['button'].content.videos.append(media_item)
+        if 'videos' not in context.user_data['adding_content']:
+            context.user_data['adding_content']['videos'] = []
+        context.user_data['adding_content']['videos'].append(media_item)
         
-        await message.reply_text("✅ Видео сохранено.")
+        await message.reply_text(
+            f"✅ Видео {len(context.user_data['adding_content']['videos'])} добавлено!\n"
+            f"Можете отправить еще видео или нажмите 'Готово'."
+        )
+        return ADDING_MEDIA
     
-    # Завершаем добавление
-    return await finish_adding(update, context)
+    else:
+        await message.reply_text("❌ Пожалуйста, отправьте фото или видео в соответствии с выбранным режимом.")
+        return ADDING_MEDIA
+
+
+async def back_to_media_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Возврат в меню медиа"""
+    query = update.callback_query
+    await query.answer()
+    
+    context.user_data['adding_content']['waiting_for'] = None
+    await show_media_menu(update, context)
+    
+    return ADDING_MEDIA
 
 
 async def finish_adding(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -314,17 +379,23 @@ async def finish_adding(update: Update, context: ContextTypes.DEFAULT_TYPE):
     adding_data = context.user_data.get('adding_content', {})
     button = adding_data.get('button')
     section_id = adding_data.get('section_id')
+    photos = adding_data.get('photos', [])
+    videos = adding_data.get('videos', [])
     
     if not button or not section_id:
         await message.reply_text("❌ Ошибка: данные не найдены")
         return ConversationHandler.END
+    
+    # Добавляем фото и видео к кнопке
+    button.content.photos = photos
+    button.content.videos = videos
     
     # Проверяем, что есть хоть какой-то контент
     if button.content.is_empty():
         await message.reply_text(
             "❌ Нельзя создать пустую кнопку. Добавьте хотя бы текст, фото или видео."
         )
-        return ENTERING_TEXT
+        return ADDING_MEDIA
     
     # Сохраняем кнопку
     db.data.sections[section_id].buttons[button.id] = button
@@ -340,8 +411,8 @@ async def finish_adding(update: Update, context: ContextTypes.DEFAULT_TYPE):
         admin_message += f"📁 **Раздел:** {db.data.sections[section_id].name}\n"
         admin_message += f"🔘 **Кнопка:** {button.name}\n\n"
         admin_message += f"📝 **Текст:**\n{button.content.text or '_текст отсутствует_'}\n\n"
-        admin_message += f"🖼 **Фото:** {len(button.content.photos)} шт.\n"
-        admin_message += f"🎥 **Видео:** {len(button.content.videos)} шт."
+        admin_message += f"🖼 **Фото:** {len(photos)} шт.\n"
+        admin_message += f"🎥 **Видео:** {len(videos)} шт."
         
         # Отправляем админу в личку
         await context.bot.send_message(
@@ -349,14 +420,6 @@ async def finish_adding(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=admin_message,
             parse_mode="Markdown"
         )
-        
-        # Если есть текст, но нет медиа, отправляем ещё раз для наглядности
-        if button.content.text and not button.content.photos and not button.content.videos:
-            await context.bot.send_message(
-                chat_id=BACKUP_CHAT_ID,
-                text=f"📝 **Текст кнопки '{button.name}':**\n\n{button.content.text}",
-                parse_mode="Markdown"
-            )
         
         logger.info(f"✅ Уведомление админу отправлено в личку для кнопки {button.name}")
         
@@ -378,8 +441,8 @@ async def finish_adding(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Раздел: **{db.data.sections[section_id].name}**\n"
         f"Кнопка: **{button.name}**\n"
         f"Текст: {'✅' if button.content.text else '❌'}\n"
-        f"Фото: {len(button.content.photos)} шт.\n"
-        f"Видео: {len(button.content.videos)} шт.",
+        f"Фото: {len(photos)} шт.\n"
+        f"Видео: {len(videos)} шт.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
