@@ -29,11 +29,16 @@ def rebuild_section_map(context):
     if 'section_map' not in context.bot_data:
         context.bot_data['section_map'] = {}
     
+    # Очищаем старую карту
+    context.bot_data['section_map'].clear()
+    
     # Заполняем карту для всех существующих разделов
     for section in db.data.sections.values():
         short_key = shorten_id(section.id)
         context.bot_data['section_map'][short_key] = section.id
-        logger.info(f"🔄 Карта разделов: {short_key} -> {section.name}")
+        logger.info(f"🔄 Карта разделов: {short_key} -> {section.name} (ID: {section.id})")
+    
+    logger.info(f"✅ Карта разделов обновлена: {len(context.bot_data['section_map'])} разделов")
 
 
 def rebuild_button_map(context):
@@ -42,6 +47,9 @@ def rebuild_button_map(context):
     """
     if 'button_map' not in context.bot_data:
         context.bot_data['button_map'] = {}
+    
+    # Очищаем старую карту
+    context.bot_data['button_map'].clear()
     
     # Заполняем карту для всех существующих кнопок
     for section in db.data.sections.values():
@@ -54,6 +62,8 @@ def rebuild_button_map(context):
                 'button_id': button.id
             }
             logger.info(f"🔄 Карта кнопок: {map_key} -> {button.name}")
+    
+    logger.info(f"✅ Карта кнопок обновлена: {len(context.bot_data['button_map'])} кнопок")
 
 
 async def show_sections(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -61,7 +71,7 @@ async def show_sections(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = update.effective_user
     
-    # Восстанавливаем карту разделов
+    # Восстанавливаем карту разделов перед показом
     rebuild_section_map(context)
     
     # Создаем клавиатуру с разделами
@@ -72,7 +82,7 @@ async def show_sections(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Создаем короткий ключ
         short_key = shorten_id(section.id)
         
-        callback_data = f"section_{short_key}"  # Используем старый формат для совместимости
+        callback_data = f"section_{short_key}"
         logger.info(f"🔧 Создана кнопка раздела: {callback_data} -> {section.name}")
         keyboard.append([InlineKeyboardButton(
             f"📁 {section.name}",
@@ -131,7 +141,7 @@ async def show_section(update: Update, context: ContextTypes.DEFAULT_TYPE, secti
         short_button = shorten_id(button.id)
         map_key = f"{short_section}_{short_button}"
         
-        callback_data = f"button_{map_key}"  # Используем старый формат
+        callback_data = f"button_{map_key}"
         keyboard.append([InlineKeyboardButton(
             f"🔘 {button.name}",
             callback_data=callback_data
