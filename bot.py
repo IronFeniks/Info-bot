@@ -7,6 +7,7 @@ Telegram бот для управления контентом в топиках
 import logging
 import warnings
 import asyncio
+import time
 from telegram.warnings import PTBUserWarning
 from telegram.error import NetworkError, TimedOut
 
@@ -18,6 +19,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
     ConversationHandler,
+    ContextTypes  # <--- ДОБАВЛЕН ИМПОРТ
 )
 
 from config import (
@@ -273,7 +275,7 @@ def main():
     application.add_handler(CallbackQueryHandler(callback_handler))
     
     # ======================== ОБРАБОТЧИК СООБЩЕНИЙ ========================
-    async def handle_message_fallback(update: Update, context):
+    async def handle_message_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик сообщений, не попавших в другие хендлеры"""
         # Игнорируем все сообщения, не попавшие в диалоги
         pass
@@ -333,5 +335,4 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"❌ Критическая ошибка: {e}")
         # Даем время на запись лога
-        import time
         time.sleep(2)
