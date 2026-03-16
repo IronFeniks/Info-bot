@@ -3,15 +3,32 @@
 """
 
 import logging
+import hashlib
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from database import db
 from handlers.common import check_access, is_admin
-from utils.helpers import safe_edit_message, send_content, get_main_keyboard, get_back_button
+from utils.helpers import safe_edit_message, send_content, get_main_keyboard
 
 logger = logging.getLogger(__name__)
+
+
+def shorten_callback(prefix: str, section_id: str, button_id: str = None) -> str:
+    """
+    Сокращает callback_data чтобы не превышать лимит Telegram (64 байта)
+    Использует первые 8 символов хеша ID
+    """
+    if button_id:
+        # Для кнопок: button_{short_section}_{short_button}
+        short_section = hashlib.md5(section_id.encode()).hexdigest()[:8]
+        short_button = hashlib.md5(button_id.encode()).hexdigest()[:8]
+        return f"{prefix}_{short_section}_{short_button}"
+    else:
+        # Для разделов: section_{short_section}
+        short_section = hashlib.md5(section_id.encode()).hexdigest()[:8]
+        return f"{prefix}_{short_section}"
 
 
 async def show_sections(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -19,10 +36,42 @@ async def show_sections(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = update.effective_user
     
+    # Создаем клавиатуру с разделами
+    keyboard = []
+    
+    # Добавляем кнопки разделов
+    for section in db.data.sections.values():
+        callback_data = shorten_callback("section", section.id)
+        # Сохраняем соответствие короткого кода и реального ID
+        context.bot_data[f"section_{callback_data}"] = section.id
+        keyboard.append([InlineKeyboardButton(
+            f"📁 {section.name}",
+            callback_data=callback_data
+        )])
+    
+    # Добавляем функциональные кнопки
+    action_row = []
+    action_row.append(InlineKeyboardButton(
+        "➕ Добавить инфу",
+        callback_data="add_content_start"
+    ))
+    action_row.append(InlineKeyboardButton(
+        "🆘 Вызов администратора",
+        callback_data="call_admin"
+    ))
+    keyboard.append(action_row)
+    
+    # Для админа добавляем кнопку управления
+    if is_admin(user.id):
+        keyboard.append([InlineKeyboardButton(
+            "🔧 Управление",
+            callback_data="admin_panel"
+        )])
+    
     await safe_edit_message(
         query,
         "📋 **Главное меню**\n\nВыберите раздел:",
-        reply_markup=get_main_keyboard(is_admin(user.id))
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
@@ -39,16 +88,21 @@ async def show_section(update: Update, context: ContextTypes.DEFAULT_TYPE, secti
     # Формируем клавиатуру с кнопками раздела
     keyboard = []
     for button in section.buttons.values():
+        callback_data = shorten_callback("button", section.id, button.id)
+        # Сохраняем соответствие
+        context.bot_data[f"button_{callback_data}"] = (section.id, button.id)
         keyboard.append([InlineKeyboardButton(
             f"🔘 {button.name}",
-            callback_data=f"button_{section_id}_{button.id}"
+            callback_data=callback_data
         )])
     
-    # Добавляем кнопки действий
-    keyboard.append([InlineKeyboardButton(
-        "➕ Добавить кнопку в этот раздел",
-        callback_data=f"add_in_section_{section_id}"
-    )])
+    # Добавляем кнопку добавления (если пользователь админ или мы в режиме добавления)
+    user = update.effective_user
+    if is_admin(user.id) or context.user_data.get('adding_mode'):
+        keyboard.append([InlineKeyboardButton(
+            "➕ Добавить кнопку в этот раздел",
+            callback_data=f"add_in_section_{section.id}"
+        )])
     
     keyboard.append([InlineKeyboardButton(
         "◀️ Назад к разделам",
@@ -81,8 +135,7 @@ async def show_button_content(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Отправляем контент
     await send_content(update, context, section_id, button_id)
     
-    # Показываем меню раздела (не редактируем предыдущее сообщение,
-    # чтобы контент остался в чате отдельным сообщением)
+    # Показываем меню раздела
     await show_section(update, context, section_id)
 
 
