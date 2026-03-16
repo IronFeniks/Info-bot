@@ -22,14 +22,47 @@ def shorten_id(id_string: str) -> str:
     return hashlib.md5(id_string.encode()).hexdigest()[:8]
 
 
+def rebuild_section_map(context):
+    """
+    Восстанавливает карту соответствий коротких ключей и ID разделов
+    """
+    if 'section_map' not in context.bot_data:
+        context.bot_data['section_map'] = {}
+    
+    # Заполняем карту для всех существующих разделов
+    for section in db.data.sections.values():
+        short_key = shorten_id(section.id)
+        context.bot_data['section_map'][short_key] = section.id
+        logger.info(f"🔄 Карта разделов: {short_key} -> {section.name}")
+
+
+def rebuild_button_map(context):
+    """
+    Восстанавливает карту соответствий для кнопок
+    """
+    if 'button_map' not in context.bot_data:
+        context.bot_data['button_map'] = {}
+    
+    # Заполняем карту для всех существующих кнопок
+    for section in db.data.sections.values():
+        short_section = shorten_id(section.id)
+        for button in section.buttons.values():
+            short_button = shorten_id(button.id)
+            map_key = f"{short_section}_{short_button}"
+            context.bot_data['button_map'][map_key] = {
+                'section_id': section.id,
+                'button_id': button.id
+            }
+            logger.info(f"🔄 Карта кнопок: {map_key} -> {button.name}")
+
+
 async def show_sections(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает список разделов (главное меню)"""
     query = update.callback_query
     user = update.effective_user
     
-    # Очищаем старые соответствия
-    if 'section_map' not in context.bot_data:
-        context.bot_data['section_map'] = {}
+    # Восстанавливаем карту разделов
+    rebuild_section_map(context)
     
     # Создаем клавиатуру с разделами
     keyboard = []
@@ -38,10 +71,8 @@ async def show_sections(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for section in db.data.sections.values():
         # Создаем короткий ключ
         short_key = shorten_id(section.id)
-        # Сохраняем соответствие короткого ключа и реального ID
-        context.bot_data['section_map'][short_key] = section.id
         
-        callback_data = f"sec_{short_key}"
+        callback_data = f"section_{short_key}"  # Используем старый формат для совместимости
         logger.info(f"🔧 Создана кнопка раздела: {callback_data} -> {section.name}")
         keyboard.append([InlineKeyboardButton(
             f"📁 {section.name}",
@@ -89,23 +120,18 @@ async def show_section(update: Update, context: ContextTypes.DEFAULT_TYPE, secti
     
     logger.info(f"✅ Раздел найден: {section.name}")
     
-    # Очищаем старые соответствия для кнопок
-    if 'button_map' not in context.bot_data:
-        context.bot_data['button_map'] = {}
+    # Восстанавливаем карту кнопок
+    rebuild_button_map(context)
     
     # Формируем клавиатуру с кнопками раздела
     keyboard = []
     for button in section.buttons.values():
         # Создаем короткий ключ для кнопки
-        short_key = shorten_id(button.id)
-        # Сохраняем соответствие
-        map_key = f"{shorten_id(section.id)}_{short_key}"
-        context.bot_data['button_map'][map_key] = {
-            'section_id': section.id,
-            'button_id': button.id
-        }
+        short_section = shorten_id(section.id)
+        short_button = shorten_id(button.id)
+        map_key = f"{short_section}_{short_button}"
         
-        callback_data = f"btn_{map_key}"
+        callback_data = f"button_{map_key}"  # Используем старый формат
         keyboard.append([InlineKeyboardButton(
             f"🔘 {button.name}",
             callback_data=callback_data
