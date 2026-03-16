@@ -9,8 +9,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 
 from database import db
-from models import Section, Button, MediaItem  # <--- ИСПРАВЛЕНО: добавлен импорт Section
-from handlers.common import check_access
+from models import Section, Button, MediaItem
+from handlers.common import check_access, is_admin
 from utils.validators import validate_section_name, validate_button_name, validate_text
 from utils.helpers import get_back_button, safe_edit_message
 
@@ -127,7 +127,7 @@ async def create_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text(f"❌ {error}\n\nПопробуйте еще раз:")
         return CREATING_SECTION
     
-    # Создаем новый раздел - ТЕПЕРЬ Section ИМПОРТИРОВАН
+    # Создаем новый раздел
     new_section = Section.create(section_name, user.id)
     db.data.sections[new_section.id] = new_section
     db.save()
@@ -304,9 +304,11 @@ async def finish_adding(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         message = query.message
         user_id = query.from_user.id
+        user = query.from_user
     else:
         message = update.effective_message
         user_id = update.effective_user.id
+        user = update.effective_user
     
     # Получаем данные
     adding_data = context.user_data.get('adding_content', {})
@@ -328,10 +330,52 @@ async def finish_adding(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.data.sections[section_id].buttons[button.id] = button
     db.save()
     
+    # ========== ОТПРАВЛЯЕМ ПОЛНУЮ ИНФОРМАЦИЮ АДМИНУ ==========
+    try:
+        from config import BACKUP_CHAT_ID, GROUP_CHAT_ID, TOPIC_ADMIN_ID
+        
+        # Формируем сообщение для админа
+        admin_message = f"🆕 **НОВАЯ КНОПКА ДОБАВЛЕНА**\n\n"
+        admin_message += f"👤 **От:** @{user.username or 'нет'} (ID: `{user_id}`)\n"
+        admin_message += f"📁 **Раздел:** {db.data.sections[section_id].name}\n"
+        admin_message += f"🔘 **Кнопка:** {button.name}\n\n"
+        admin_message += f"📝 **Текст:**\n{button.content.text or '_текст отсутствует_'}\n\n"
+        admin_message += f"🖼 **Фото:** {len(button.content.photos)} шт.\n"
+        admin_message += f"🎥 **Видео:** {len(button.content.videos)} шт."
+        
+        # Отправляем админу в личку
+        await context.bot.send_message(
+            chat_id=BACKUP_CHAT_ID,
+            text=admin_message,
+            parse_mode="Markdown"
+        )
+        
+        # Если есть текст, но нет медиа, отправляем ещё раз для наглядности
+        if button.content.text and not button.content.photos and not button.content.videos:
+            await context.bot.send_message(
+                chat_id=BACKUP_CHAT_ID,
+                text=f"📝 **Текст кнопки '{button.name}':**\n\n{button.content.text}",
+                parse_mode="Markdown"
+            )
+        
+        # Отправляем уведомление в админский топик
+        await context.bot.send_message(
+            chat_id=GROUP_CHAT_ID,
+            message_thread_id=TOPIC_ADMIN_ID,
+            text=f"🆕 Пользователь @{user.username or 'нет'} добавил новую кнопку **'{button.name}'** в раздел **'{db.data.sections[section_id].name}'**",
+            parse_mode="Markdown"
+        )
+        
+        logger.info(f"✅ Уведомление админу отправлено для кнопки {button.name}")
+        
+    except Exception as e:
+        logger.error(f"❌ Не удалось уведомить админа: {e}")
+    # =====================================================
+    
     # Очищаем временные данные
     context.user_data.pop('adding_content', None)
     
-    # Показываем подтверждение
+    # Показываем подтверждение пользователю
     keyboard = [[
         InlineKeyboardButton("📋 В меню", callback_data="back_to_main"),
         InlineKeyboardButton("➕ Добавить еще", callback_data="add_content_start")
