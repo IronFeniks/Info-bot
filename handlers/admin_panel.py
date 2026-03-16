@@ -26,8 +26,22 @@ logger = logging.getLogger(__name__)
     ADMIN_EDITING_PHOTO,
     ADMIN_EDITING_VIDEO,
     ADMIN_DELETING_CONFIRM,
-    ADMIN_DELETING_SECTION_CONFIRM  # Новое состояние
+    ADMIN_DELETING_SECTION_CONFIRM
 ) = range(8)
+
+# Список экспортируемых функций и констант
+__all__ = [
+    'admin_panel', 'admin_select_section', 'admin_show_button',
+    'admin_edit_choice', 'admin_edit_text', 'admin_save_text', 'admin_delete_text',
+    'admin_edit_photo', 'admin_add_photo', 'admin_save_photo', 'admin_delete_photo',
+    'admin_delete_all_photos', 'admin_edit_video', 'admin_add_video', 'admin_save_video',
+    'admin_delete_video', 'admin_delete_all_videos', 'admin_delete_confirm',
+    'admin_delete_yes', 'admin_cancel', 'admin_delete_section_confirm',
+    'admin_delete_section_yes',
+    'ADMIN_SELECTING_SECTION', 'ADMIN_SELECTING_BUTTON', 'ADMIN_EDITING_CHOICE',
+    'ADMIN_EDITING_TEXT', 'ADMIN_EDITING_PHOTO', 'ADMIN_EDITING_VIDEO',
+    'ADMIN_DELETING_CONFIRM', 'ADMIN_DELETING_SECTION_CONFIRM'
+]
 
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -84,6 +98,7 @@ async def admin_delete_section_confirm(update: Update, context: ContextTypes.DEF
     query = update.callback_query
     await query.answer()
     
+    # Извлекаем ID раздела из callback_data
     section_id = query.data.replace("admin_delete_section_", "")
     section = db.data.sections.get(section_id)
     
@@ -91,6 +106,7 @@ async def admin_delete_section_confirm(update: Update, context: ContextTypes.DEF
         await query.edit_message_text("❌ Раздел не найден")
         return ADMIN_SELECTING_SECTION
     
+    # Сохраняем ID раздела в контексте
     context.user_data['admin_delete_section_id'] = section_id
     
     # Считаем количество кнопок в разделе
@@ -122,6 +138,7 @@ async def admin_delete_section_yes(update: Update, context: ContextTypes.DEFAULT
     query = update.callback_query
     await query.answer()
     
+    # Получаем ID раздела из контекста
     section_id = context.user_data.get('admin_delete_section_id')
     
     if not section_id:
@@ -134,6 +151,7 @@ async def admin_delete_section_yes(update: Update, context: ContextTypes.DEFAULT
         await query.edit_message_text("❌ Раздел не найден")
         return ADMIN_SELECTING_SECTION
     
+    # Сохраняем информацию для сообщения
     section_name = section.name
     buttons_count = len(section.buttons)
     
