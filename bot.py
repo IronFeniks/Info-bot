@@ -24,7 +24,7 @@ from config import (
     ADMIN_ID, DATA_FILE
 )
 from database import db
-from handlers.common import start, help_command, infa_command, backup_command, error_handler
+from handlers.common import start, help_command, infa_command, backup_command, error_handler, is_admin
 from handlers.callbacks import callback_handler
 from handlers.add_content import (
     add_content_start, select_section, new_section, create_section,
@@ -39,15 +39,17 @@ from handlers.admin_panel import (
     admin_edit_photo, admin_add_photo, admin_save_photo, admin_delete_photo,
     admin_delete_all_photos, admin_edit_video, admin_add_video, admin_save_video,
     admin_delete_video, admin_delete_all_videos, admin_delete_confirm,
-    admin_delete_yes, admin_cancel,
+    admin_delete_yes, admin_cancel, admin_delete_section_confirm,
+    admin_delete_section_yes,
     ADMIN_SELECTING_SECTION, ADMIN_SELECTING_BUTTON, ADMIN_EDITING_CHOICE,
     ADMIN_EDITING_TEXT, ADMIN_EDITING_PHOTO, ADMIN_EDITING_VIDEO,
-    ADMIN_DELETING_CONFIRM
+    ADMIN_DELETING_CONFIRM, ADMIN_DELETING_SECTION_CONFIRM
 )
 from handlers.admin_management import (
     manage_admins, add_admin_start, add_admin_process, list_admins,
     WAITING_FOR_ADMIN_ID
 )
+from handlers.menu import rebuild_section_map, rebuild_button_map, force_rebuild_maps
 
 # Игнорируем предупреждения PTB
 warnings.filterwarnings("ignore", category=PTBUserWarning)
@@ -58,6 +60,53 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+
+# ======================== КОМАНДА ДЛЯ ОТЛАДКИ ========================
+async def debug_maps(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда для отладки карт (только для админа)"""
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("⛔ Только для администратора")
+        return
+    
+    section_map = context.bot_data.get('section_map', {})
+    button_map = context.bot_data.get('button_map', {})
+    
+    message = "🔍 **ОТЛАДКА КАРТ**\n\n"
+    message += f"**Разделы в базе:** {len(db.data.sections)}\n"
+    message += f"**Разделы в карте:** {len(section_map)}\n\n"
+    
+    if section_map:
+        message += "**Соответствия:**\n"
+        for key, value in list(section_map.items())[:10]:
+            section = db.data.sections.get(value)
+            if section:
+                message += f"• `{key}` → {section.name}\n"
+            else:
+                message += f"• `{key}` → ❌ НЕТ В БАЗЕ (ID: {value})\n"
+    else:
+        message += "❌ Карта разделов пуста\n"
+    
+    # Считаем все кнопки
+    total_buttons = 0
+    for section in db.data.sections.values():
+        total_buttons += len(section.buttons)
+    
+    message += f"\n**Кнопки в базе:** {total_buttons}\n"
+    message += f"**Кнопки в карте:** {len(button_map)}\n"
+    
+    await update.message.reply_text(message, parse_mode="Markdown")
+
+
+# ======================== КОМАНДА ДЛЯ ПЕРЕСТРОЙКИ КАРТ ========================
+async def rebuild_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда для принудительной перестройки карт (только для админа)"""
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("⛔ Только для администратора")
+        return
+    
+    await force_rebuild_maps(context)
+    await update.message.reply_text("✅ Карты успешно перестроены!")
 
 
 def main():
@@ -71,6 +120,8 @@ def main():
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("infa", infa_command))
     application.add_handler(CommandHandler("backup", backup_command))
+    application.add_handler(CommandHandler("debug", debug_maps))
+    application.add_handler(CommandHandler("rebuild", rebuild_command))
     
     # ======================== ДОБАВЛЕНИЕ КОНТЕНТА (Conversation) ========================
     add_content_conv = ConversationHandler(
@@ -160,6 +211,10 @@ def main():
                 CallbackQueryHandler(admin_delete_yes, pattern="^admin_delete_yes$"),
                 CallbackQueryHandler(admin_select_section, pattern="^admin_section_")
             ],
+            ADMIN_DELETING_SECTION_CONFIRM: [
+                CallbackQueryHandler(admin_delete_section_yes, pattern="^admin_delete_section_yes$"),
+                CallbackQueryHandler(admin_panel, pattern="^admin_panel$")
+            ],
         },
         fallbacks=[
             CommandHandler("start", start),
@@ -213,6 +268,10 @@ def main():
     logger.info(f"👑 Админ ID: {ADMIN_ID}")
     logger.info(f"💾 Данные сохраняются в: {DATA_FILE}")
     logger.info("=" * 40)
+    
+    # Перестраиваем карты при запуске
+    logger.info("🔄 Перестройка карт при запуске...")
+    force_rebuild_maps(application.bot_data)
     
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
