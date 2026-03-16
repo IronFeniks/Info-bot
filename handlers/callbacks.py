@@ -143,15 +143,31 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def call_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик вызова администратора"""
+    """
+    Обработчик вызова администратора
+    Показывает контакты администратора
+    """
     query = update.callback_query
     await query.answer()
     
-    user = update.effective_user
-    message = f"🆘 **ВЫЗОВ АДМИНИСТРАТОРА**\n\nОт: @{user.username or 'нет юзернейма'} (ID: `{user.id}`)\n\nНапишите ваше сообщение. Оно будет переслано администратору."
+    # Список администраторов (можно добавить в config.py позже)
+    admins = [
+        {"name": "Главный администратор", "username": "Ironshizo", "id": 639212691},
+        # Сюда можно добавлять других админов через админ-панель
+    ]
     
-    # Переходим в режим ожидания сообщения
-    context.user_data['waiting_for_admin_call'] = True
+    # Формируем сообщение
+    message = "🆘 **СВЯЗЬ С АДМИНИСТРАТОРОМ**\n\n"
+    message += "📝 **Напишите администратору, не забудь приложить скрины**\n\n"
+    message += "👤 **Контакты:**\n"
+    
+    for admin in admins:
+        message += f"• @{admin['username']}\n"
+    
+    message += "\n📎 **При обращении указывайте:**\n"
+    message += "• Вашу проблему\n"
+    message += "• Скриншоты (если есть)\n"
+    message += "• ID кнопки или раздела"
     
     await safe_edit_message(
         query,
