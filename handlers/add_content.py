@@ -3,15 +3,14 @@
 """
 
 import logging
-from typing import Optional, Dict
 from datetime import datetime
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 
 from database import db
-from models import Button, MediaItem
-from handlers.common import check_access, is_admin
+from models import Section, Button, MediaItem  # <--- ИСПРАВЛЕНО: добавлен импорт Section
+from handlers.common import check_access
 from utils.validators import validate_section_name, validate_button_name, validate_text
 from utils.helpers import get_back_button, safe_edit_message
 
@@ -128,7 +127,7 @@ async def create_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text(f"❌ {error}\n\nПопробуйте еще раз:")
         return CREATING_SECTION
     
-    # Создаем новый раздел
+    # Создаем новый раздел - ТЕПЕРЬ Section ИМПОРТИРОВАН
     new_section = Section.create(section_name, user.id)
     db.data.sections[new_section.id] = new_section
     db.save()
