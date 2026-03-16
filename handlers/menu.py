@@ -39,6 +39,7 @@ def rebuild_section_map(context):
         logger.info(f"🔄 Карта разделов: {short_key} -> {section.name} (ID: {section.id})")
     
     logger.info(f"✅ Карта разделов обновлена: {len(context.bot_data['section_map'])} разделов")
+    return context.bot_data['section_map']
 
 
 def rebuild_button_map(context):
@@ -64,6 +65,15 @@ def rebuild_button_map(context):
             logger.info(f"🔄 Карта кнопок: {map_key} -> {button.name}")
     
     logger.info(f"✅ Карта кнопок обновлена: {len(context.bot_data['button_map'])} кнопок")
+    return context.bot_data['button_map']
+
+
+async def force_rebuild_maps(context):
+    """Принудительно перестраивает все карты"""
+    rebuild_section_map(context)
+    rebuild_button_map(context)
+    logger.info("✅ Все карты принудительно перестроены")
+    return True
 
 
 async def show_sections(update: Update, context: ContextTypes.DEFAULT_TYPE):
