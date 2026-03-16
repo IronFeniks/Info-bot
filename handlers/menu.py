@@ -3,7 +3,6 @@
 """
 
 import logging
-import hashlib
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -13,22 +12,6 @@ from handlers.common import check_access, is_admin
 from utils.helpers import safe_edit_message, send_content, get_main_keyboard
 
 logger = logging.getLogger(__name__)
-
-
-def shorten_callback(prefix: str, section_id: str, button_id: str = None) -> str:
-    """
-    Сокращает callback_data чтобы не превышать лимит Telegram (64 байта)
-    Использует первые 8 символов хеша ID
-    """
-    if button_id:
-        # Для кнопок: button_{short_section}_{short_button}
-        short_section = hashlib.md5(section_id.encode()).hexdigest()[:8]
-        short_button = hashlib.md5(button_id.encode()).hexdigest()[:8]
-        return f"{prefix}_{short_section}_{short_button}"
-    else:
-        # Для разделов: section_{short_section}
-        short_section = hashlib.md5(section_id.encode()).hexdigest()[:8]
-        return f"{prefix}_{short_section}"
 
 
 async def show_sections(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -41,9 +24,9 @@ async def show_sections(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Добавляем кнопки разделов
     for section in db.data.sections.values():
-        callback_data = shorten_callback("section", section.id)
-        # Сохраняем соответствие короткого кода и реального ID
-        context.bot_data[f"section_{callback_data}"] = section.id
+        # Используем прямой ID раздела
+        callback_data = f"section_{section.id}"
+        logger.info(f"🔧 Создана кнопка раздела: {callback_data}")
         keyboard.append([InlineKeyboardButton(
             f"📁 {section.name}",
             callback_data=callback_data
@@ -78,30 +61,33 @@ async def show_sections(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_section(update: Update, context: ContextTypes.DEFAULT_TYPE, section_id: str):
     """Показывает кнопки внутри раздела"""
     query = update.callback_query
+    
+    logger.info(f"🔍 Поиск раздела с ID: {section_id}")
     section = db.data.sections.get(section_id)
     
     if not section:
-        await query.answer("❌ Раздел не найден")
+        logger.error(f"❌ Раздел не найден: {section_id}")
+        await query.edit_message_text("❌ Раздел не найден")
         await show_sections(update, context)
         return
+    
+    logger.info(f"✅ Раздел найден: {section.name}")
     
     # Формируем клавиатуру с кнопками раздела
     keyboard = []
     for button in section.buttons.values():
-        callback_data = shorten_callback("button", section.id, button.id)
-        # Сохраняем соответствие
-        context.bot_data[f"button_{callback_data}"] = (section.id, button.id)
+        callback_data = f"button_{section_id}_{button.id}"
         keyboard.append([InlineKeyboardButton(
             f"🔘 {button.name}",
             callback_data=callback_data
         )])
     
-    # Добавляем кнопку добавления (если пользователь админ или мы в режиме добавления)
+    # Добавляем кнопку добавления (если пользователь админ)
     user = update.effective_user
-    if is_admin(user.id) or context.user_data.get('adding_mode'):
+    if is_admin(user.id):
         keyboard.append([InlineKeyboardButton(
             "➕ Добавить кнопку в этот раздел",
-            callback_data=f"add_in_section_{section.id}"
+            callback_data=f"add_in_section_{section_id}"
         )])
     
     keyboard.append([InlineKeyboardButton(
