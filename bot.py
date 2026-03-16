@@ -5,6 +5,8 @@ Telegram бот для управления контентом в топиках
 """
 
 import logging
+import warnings
+from telegram.warnings import PTBUserWarning
 
 from telegram import Update
 from telegram.ext import (
@@ -38,6 +40,13 @@ from handlers.admin_panel import (
     ADMIN_EDITING_TEXT, ADMIN_EDITING_PHOTO, ADMIN_EDITING_VIDEO,
     ADMIN_DELETING_CONFIRM
 )
+from handlers.admin_management import (
+    manage_admins, add_admin_start, add_admin_process, list_admins,
+    WAITING_FOR_ADMIN_ID
+)
+
+# Игнорируем предупреждения PTB
+warnings.filterwarnings("ignore", category=PTBUserWarning)
 
 # Настройка логирования
 logging.basicConfig(
@@ -159,6 +168,24 @@ def main():
         persistent=False
     )
     application.add_handler(admin_conv)
+    
+    # ======================== УПРАВЛЕНИЕ АДМИНИСТРАТОРАМИ ========================
+    admin_management_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(manage_admins, pattern="^manage_admins$")],
+        states={
+            WAITING_FOR_ADMIN_ID: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, add_admin_process),
+            ],
+        },
+        fallbacks=[
+            CallbackQueryHandler(admin_panel, pattern="^admin_panel$"),
+            CallbackQueryHandler(list_admins, pattern="^list_admins$"),
+            CallbackQueryHandler(manage_admins, pattern="^add_admin$")
+        ],
+        name="admin_management_conversation",
+        persistent=False
+    )
+    application.add_handler(admin_management_conv)
     
     # ======================== ОБЩИЙ ОБРАБОТЧИК CALLBACK ========================
     application.add_handler(CallbackQueryHandler(callback_handler))
