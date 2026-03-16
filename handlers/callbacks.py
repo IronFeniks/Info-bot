@@ -42,21 +42,28 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     logger.info(f"📨 Callback получен: {data}")
     
-    # Навигация
+    # ======================== НАВИГАЦИЯ ========================
     if data == "back_to_main":
         await show_sections(update, context)
     
-    # УДАЛЕНИЕ РАЗДЕЛА (самый высокий приоритет)
-    elif data.startswith("admin_delete_section_"):
-        logger.info(f"🗑 Удаление раздела: {data}")
-        await admin_delete_section_confirm(update, context)
-    
-    # Подтверждение удаления раздела
+    # ======================== УДАЛЕНИЕ РАЗДЕЛА ========================
+    # Подтверждение удаления раздела (самый высокий приоритет)
     elif data == "admin_delete_section_yes":
         logger.info(f"✅ Подтверждение удаления раздела")
         await admin_delete_section_yes(update, context)
     
-    # УДАЛЕНИЕ КНОПКИ
+    # Запрос на удаление раздела
+    elif data.startswith("admin_delete_section_"):
+        logger.info(f"🗑 Запрос удаления раздела: {data}")
+        await admin_delete_section_confirm(update, context)
+    
+    # ======================== УДАЛЕНИЕ КНОПКИ ========================
+    # Подтверждение удаления кнопки
+    elif data == "admin_delete_yes":
+        logger.info(f"✅ Подтверждение удаления кнопки")
+        await admin_delete_yes(update, context)
+    
+    # Запрос на удаление кнопки (исключаем специальные случаи)
     elif data.startswith("admin_delete_") and not any([
         data.startswith("admin_delete_section_"),
         data.startswith("admin_delete_photo_"),
@@ -64,15 +71,35 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data.startswith("admin_delete_all_"),
         data == "admin_delete_yes"
     ]):
-        logger.info(f"🗑 Удаление кнопки: {data}")
+        logger.info(f"🗑 Запрос удаления кнопки: {data}")
         await admin_delete_confirm(update, context)
     
-    # Подтверждение удаления кнопки
-    elif data == "admin_delete_yes":
-        logger.info(f"✅ Подтверждение удаления кнопки")
-        await admin_delete_yes(update, context)
+    # ======================== РЕДАКТИРОВАНИЕ МЕДИА ========================
+    # Удаление фото
+    elif data.startswith("admin_delete_photo_"):
+        await admin_delete_photo(update, context)
     
-    # Меню разделов
+    # Удаление всех фото
+    elif data == "admin_delete_all_photos":
+        await admin_delete_all_photos(update, context)
+    
+    # Удаление видео
+    elif data.startswith("admin_delete_video_"):
+        await admin_delete_video(update, context)
+    
+    # Удаление всех видео
+    elif data == "admin_delete_all_videos":
+        await admin_delete_all_videos(update, context)
+    
+    # Добавление фото
+    elif data == "admin_add_photo":
+        await admin_add_photo(update, context)
+    
+    # Добавление видео
+    elif data == "admin_add_video":
+        await admin_add_video(update, context)
+    
+    # ======================== МЕНЮ РАЗДЕЛОВ ========================
     elif data.startswith("section_"):
         short_key = data.replace("section_", "")
         section_id = context.bot_data.get('section_map', {}).get(short_key)
@@ -83,7 +110,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"❌ Раздел не найден по ключу: {short_key}")
             await query.edit_message_text("❌ Раздел не найден")
     
-    # Меню кнопок
+    # ======================== МЕНЮ КНОПОК ========================
     elif data.startswith("button_"):
         map_key = data.replace("button_", "")
         button_info = context.bot_data.get('button_map', {}).get(map_key)
@@ -96,7 +123,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"❌ Кнопка не найдена по ключу: {map_key}")
             await query.edit_message_text("❌ Кнопка не найдена")
     
-    # Добавление контента
+    # ======================== ДОБАВЛЕНИЕ КОНТЕНТА ========================
     elif data == "add_content_start":
         await add_content_start(update, context)
     
@@ -124,7 +151,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "cancel_adding":
         await cancel_adding(update, context)
     
-    # Админ-панель
+    # ======================== АДМИН-ПАНЕЛЬ ========================
     elif data == "admin_panel":
         await admin_panel(update, context)
     
@@ -146,28 +173,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "admin_edit_photo":
         await admin_edit_photo(update, context)
     
-    elif data == "admin_add_photo":
-        await admin_add_photo(update, context)
-    
-    elif data.startswith("admin_delete_photo_"):
-        await admin_delete_photo(update, context)
-    
-    elif data == "admin_delete_all_photos":
-        await admin_delete_all_photos(update, context)
-    
     elif data == "admin_edit_video":
         await admin_edit_video(update, context)
     
-    elif data == "admin_add_video":
-        await admin_add_video(update, context)
-    
-    elif data.startswith("admin_delete_video_"):
-        await admin_delete_video(update, context)
-    
-    elif data == "admin_delete_all_videos":
-        await admin_delete_all_videos(update, context)
-    
-    # Управление администраторами
+    # ======================== УПРАВЛЕНИЕ АДМИНИСТРАТОРАМИ ========================
     elif data == "manage_admins":
         from handlers.admin_management import manage_admins
         await manage_admins(update, context)
@@ -180,7 +189,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from handlers.admin_management import add_admin_start
         await add_admin_start(update, context)
     
-    # Вызов администратора
+    # ======================== ВЫЗОВ АДМИНИСТРАТОРА ========================
     elif data == "call_admin":
         await call_admin(update, context)
     
