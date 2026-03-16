@@ -23,7 +23,7 @@ from handlers.admin_panel import (
     admin_delete_video, admin_delete_all_videos, admin_delete_confirm,
     admin_delete_yes, admin_cancel
 )
-from utils.helpers import safe_edit_message  # <--- ВАЖНЫЙ ИМПОРТ
+from utils.helpers import safe_edit_message
 
 logger = logging.getLogger(__name__)
 
@@ -39,28 +39,27 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     data = query.data
+    logger.info(f"📨 Callback получен: {data}")
     
     # Навигация
     if data == "back_to_main":
         await show_sections(update, context)
     
-    # Меню разделов и кнопок (с сокращенными callback)
+    # Меню разделов и кнопок
     elif data.startswith("section_"):
-        # Восстанавливаем реальный ID раздела
-        section_id = context.bot_data.get(f"section_{data}")
-        if section_id:
-            await show_section(update, context, section_id)
-        else:
-            await query.edit_message_text("❌ Раздел не найден")
+        # Просто передаем ID раздела как есть
+        section_id = data.replace("section_", "")
+        logger.info(f"📁 Открытие раздела: {section_id}")
+        await show_section(update, context, section_id)
     
     elif data.startswith("button_"):
-        # Восстанавливаем реальные ID
-        button_info = context.bot_data.get(f"button_{data}")
-        if button_info:
-            section_id, button_id = button_info
+        parts = data.split("_")
+        if len(parts) >= 3:
+            # Формат: button_{section_id}_{button_id}
+            section_id = parts[1]
+            button_id = parts[2]
+            logger.info(f"🔘 Открытие кнопки: {button_id} в разделе {section_id}")
             await show_button_content(update, context, section_id, button_id)
-        else:
-            await query.edit_message_text("❌ Кнопка не найдена")
     
     # Добавление контента
     elif data == "add_content_start":
@@ -138,7 +137,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await call_admin(update, context)
     
     else:
-        logger.warning(f"Неизвестный callback: {data}")
+        logger.warning(f"❌ Неизвестный callback: {data}")
         await query.edit_message_text("❌ Неизвестная команда")
 
 
@@ -150,10 +149,9 @@ async def call_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    # Список администраторов (можно добавить в config.py позже)
+    # Список администраторов
     admins = [
         {"name": "Главный администратор", "username": "Ironshizo", "id": 639212691},
-        # Сюда можно добавлять других админов через админ-панель
     ]
     
     # Формируем сообщение
@@ -167,7 +165,7 @@ async def call_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message += "\n📎 **При обращении указывайте:**\n"
     message += "• Вашу проблему\n"
     message += "• Скриншоты (если есть)\n"
-    message += "• ID кнопки или раздела"
+    message += "• Название кнопки или раздела"
     
     await safe_edit_message(
         query,
