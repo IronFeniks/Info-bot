@@ -45,10 +45,17 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "back_to_main":
         await show_sections(update, context)
     
-    # Меню разделов (с короткими ключами)
-    elif data.startswith("sec_"):
-        short_key = data.replace("sec_", "")
+    # Меню разделов - поддерживаем оба формата (старый и новый)
+    elif data.startswith("section_") or data.startswith("sec_"):
+        # Извлекаем короткий ключ
+        if data.startswith("section_"):
+            short_key = data.replace("section_", "")
+        else:
+            short_key = data.replace("sec_", "")
+        
+        # Получаем реальный ID раздела из карты
         section_id = context.bot_data.get('section_map', {}).get(short_key)
+        
         if section_id:
             logger.info(f"📁 Открытие раздела: {section_id}")
             await show_section(update, context, section_id)
@@ -56,10 +63,17 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"❌ Раздел не найден по ключу: {short_key}")
             await query.edit_message_text("❌ Раздел не найден")
     
-    # Меню кнопок (с короткими ключами)
-    elif data.startswith("btn_"):
-        map_key = data.replace("btn_", "")
+    # Меню кнопок
+    elif data.startswith("button_") or data.startswith("btn_"):
+        # Извлекаем составной ключ
+        if data.startswith("button_"):
+            map_key = data.replace("button_", "")
+        else:
+            map_key = data.replace("btn_", "")
+        
+        # Получаем информацию о кнопке из карты
         button_info = context.bot_data.get('button_map', {}).get(map_key)
+        
         if button_info:
             section_id = button_info['section_id']
             button_id = button_info['button_id']
