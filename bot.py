@@ -18,7 +18,11 @@ from telegram.ext import (
     ConversationHandler,
 )
 
-from config import BOT_TOKEN, BOT_NAME, BOT_VERSION, GROUP_CHAT_ID, TOPIC_PUBLIC_ID, TOPIC_ADMIN_ID, ADMIN_ID
+from config import (
+    BOT_TOKEN, BOT_NAME, BOT_VERSION, 
+    GROUP_CHAT_ID, TOPIC_PUBLIC_ID, TOPIC_ADMIN_ID, 
+    ADMIN_ID, DATA_FILE  # <--- ДОБАВЛЕН DATA_FILE
+)
 from database import db
 from handlers.common import start, help_command, infa_command, backup_command, error_handler
 from handlers.callbacks import callback_handler
