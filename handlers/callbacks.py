@@ -13,7 +13,7 @@ from handlers.menu import (
 )
 from handlers.add_content import (
     add_content_start, select_section, new_section, cancel_adding,
-    skip_text, skip_photo, finish_adding
+    skip_text, finish_adding, add_photo, add_video, back_to_media_menu
 )
 from handlers.admin_panel import (
     admin_panel, admin_select_section, admin_show_button,
@@ -74,8 +74,14 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "skip_text":
         await skip_text(update, context)
     
-    elif data == "skip_photo":
-        await skip_photo(update, context)
+    elif data == "add_photo":
+        await add_photo(update, context)
+    
+    elif data == "add_video":
+        await add_video(update, context)
+    
+    elif data == "back_to_media_menu":
+        await back_to_media_menu(update, context)
     
     elif data == "finish_adding":
         await finish_adding(update, context)
@@ -131,6 +137,19 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif data == "admin_delete_yes":
         await admin_delete_yes(update, context)
+    
+    # Управление администраторами
+    elif data == "manage_admins":
+        from handlers.admin_management import manage_admins
+        await manage_admins(update, context)
+    
+    elif data == "list_admins":
+        from handlers.admin_management import list_admins
+        await list_admins(update, context)
+    
+    elif data == "add_admin":
+        from handlers.admin_management import add_admin_start
+        await add_admin_start(update, context)
     
     # Вызов администратора
     elif data == "call_admin":
