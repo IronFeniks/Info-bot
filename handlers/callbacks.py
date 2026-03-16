@@ -19,8 +19,9 @@ from handlers.admin_panel import (
     admin_panel, admin_select_section, admin_show_button,
     admin_edit_choice, admin_edit_text, admin_delete_text,
     admin_edit_photo, admin_add_photo, admin_delete_photo,
-    admin_delete_all_photos, admin_delete_confirm, admin_delete_yes,
-    admin_cancel
+    admin_delete_all_photos, admin_edit_video, admin_add_video,
+    admin_delete_video, admin_delete_all_videos, admin_delete_confirm,
+    admin_delete_yes, admin_cancel
 )
 
 logger = logging.getLogger(__name__)
@@ -42,15 +43,23 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "back_to_main":
         await show_sections(update, context)
     
-    # Меню разделов и кнопок
+    # Меню разделов и кнопок (с сокращенными callback)
     elif data.startswith("section_"):
-        section_id = data.replace("section_", "")
-        await show_section(update, context, section_id)
+        # Восстанавливаем реальный ID раздела
+        section_id = context.bot_data.get(f"section_{data}")
+        if section_id:
+            await show_section(update, context, section_id)
+        else:
+            await query.edit_message_text("❌ Раздел не найден")
     
     elif data.startswith("button_"):
-        parts = data.split("_")
-        _, section_id, button_id = parts[0], parts[1], parts[2]
-        await show_button_content(update, context, section_id, button_id)
+        # Восстанавливаем реальные ID
+        button_info = context.bot_data.get(f"button_{data}")
+        if button_info:
+            section_id, button_id = button_info
+            await show_button_content(update, context, section_id, button_id)
+        else:
+            await query.edit_message_text("❌ Кнопка не найдена")
     
     # Добавление контента
     elif data == "add_content_start":
@@ -105,7 +114,19 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "admin_delete_all_photos":
         await admin_delete_all_photos(update, context)
     
-    elif data.startswith("admin_delete_"):
+    elif data == "admin_edit_video":
+        await admin_edit_video(update, context)
+    
+    elif data == "admin_add_video":
+        await admin_add_video(update, context)
+    
+    elif data.startswith("admin_delete_video_"):
+        await admin_delete_video(update, context)
+    
+    elif data == "admin_delete_all_videos":
+        await admin_delete_all_videos(update, context)
+    
+    elif data.startswith("admin_delete_") and not data.startswith("admin_delete_"):
         await admin_delete_confirm(update, context)
     
     elif data == "admin_delete_yes":
@@ -118,3 +139,21 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         logger.warning(f"Неизвестный callback: {data}")
         await query.edit_message_text("❌ Неизвестная команда")
+
+
+async def call_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик вызова администратора"""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    message = f"🆘 **ВЫЗОВ АДМИНИСТРАТОРА**\n\nОт: @{user.username or 'нет юзернейма'} (ID: `{user.id}`)\n\nНапишите ваше сообщение. Оно будет переслано администратору."
+    
+    # Переходим в режим ожидания сообщения
+    context.user_data['waiting_for_admin_call'] = True
+    
+    await safe_edit_message(
+        query,
+        message,
+        parse_mode="Markdown"
+    )
