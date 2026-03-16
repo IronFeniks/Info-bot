@@ -29,17 +29,19 @@ class Database:
     
     def _ensure_file_exists(self):
         """Проверяет существование файла и создает его при необходимости"""
-        if not os.path.exists(self.data_file):
-            try:
-                # Создаем папку, если нужно
-                os.makedirs(os.path.dirname(os.path.abspath(self.data_file)), exist_ok=True)
-                
+        try:
+            # Создаем папку, если нужно
+            os.makedirs(os.path.dirname(self.data_file), exist_ok=True)
+            
+            if not os.path.exists(self.data_file):
                 # Создаем файл с пустой структурой
                 with open(self.data_file, 'w', encoding='utf-8') as f:
                     json.dump({"sections": {}, "users": {}}, f, ensure_ascii=False, indent=2)
                 logger.info(f"✅ Создан новый файл данных: {self.data_file}")
-            except Exception as e:
-                logger.error(f"❌ Ошибка создания файла данных: {e}")
+            else:
+                logger.info(f"📁 Файл данных найден: {self.data_file}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка создания файла данных: {e}")
     
     def load(self) -> None:
         """Загружает данные из JSON"""
@@ -48,9 +50,13 @@ class Database:
                 with open(self.data_file, 'r', encoding='utf-8') as f:
                     raw_data = json.load(f)
                 self.data = BotData.from_dict(raw_data)
+                
+                # Подсчитываем статистику
+                sections_count = len(self.data.sections)
+                buttons_count = sum(len(s.buttons) for s in self.data.sections.values())
+                
                 logger.info(f"✅ Данные загружены из {self.data_file}")
-                logger.info(f"📊 Статистика: {len(self.data.sections)} разделов, "
-                          f"{sum(len(s.buttons) for s in self.data.sections.values())} кнопок")
+                logger.info(f"📊 Статистика: {sections_count} разделов, {buttons_count} кнопок")
             else:
                 logger.warning(f"📁 Файл {self.data_file} не найден, создаем новый")
                 self._ensure_file_exists()
@@ -201,6 +207,27 @@ class Database:
         except Exception as e:
             logger.error(f"❌ Ошибка восстановления из бэкапа: {e}")
             return None
+    
+    async def auto_backup(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
+        """
+        Автоматически отправляет бэкап JSON в личку админа
+        """
+        try:
+            self.save()  # Сохраняем текущие данные
+            
+            # Отправляем файл админу
+            with open(self.data_file, 'rb') as f:
+                await context.bot.send_document(
+                    chat_id=BACKUP_CHAT_ID,
+                    document=f,
+                    caption=f"📦 Автоматический бэкап базы данных от {datetime.now().isoformat()}",
+                    filename=f"bot_data_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                )
+            logger.info("✅ Автоматический бэкап отправлен админу")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Ошибка автоматического бэкапа: {e}")
+            return False
     
     def export_to_json(self) -> str:
         """Экспортирует данные в JSON строку"""
