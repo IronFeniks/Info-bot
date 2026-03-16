@@ -45,21 +45,29 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "back_to_main":
         await show_sections(update, context)
     
-    # Меню разделов и кнопок
-    elif data.startswith("section_"):
-        # Просто передаем ID раздела как есть
-        section_id = data.replace("section_", "")
-        logger.info(f"📁 Открытие раздела: {section_id}")
-        await show_section(update, context, section_id)
+    # Меню разделов (с короткими ключами)
+    elif data.startswith("sec_"):
+        short_key = data.replace("sec_", "")
+        section_id = context.bot_data.get('section_map', {}).get(short_key)
+        if section_id:
+            logger.info(f"📁 Открытие раздела: {section_id}")
+            await show_section(update, context, section_id)
+        else:
+            logger.error(f"❌ Раздел не найден по ключу: {short_key}")
+            await query.edit_message_text("❌ Раздел не найден")
     
-    elif data.startswith("button_"):
-        parts = data.split("_")
-        if len(parts) >= 3:
-            # Формат: button_{section_id}_{button_id}
-            section_id = parts[1]
-            button_id = parts[2]
+    # Меню кнопок (с короткими ключами)
+    elif data.startswith("btn_"):
+        map_key = data.replace("btn_", "")
+        button_info = context.bot_data.get('button_map', {}).get(map_key)
+        if button_info:
+            section_id = button_info['section_id']
+            button_id = button_info['button_id']
             logger.info(f"🔘 Открытие кнопки: {button_id} в разделе {section_id}")
             await show_button_content(update, context, section_id, button_id)
+        else:
+            logger.error(f"❌ Кнопка не найдена по ключу: {map_key}")
+            await query.edit_message_text("❌ Кнопка не найдена")
     
     # Добавление контента
     elif data == "add_content_start":
