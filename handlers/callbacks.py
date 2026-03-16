@@ -7,9 +7,11 @@ import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from database import db
 from handlers.common import check_access
 from handlers.menu import (
-    show_sections, show_section, show_button_content, back_to_main
+    show_sections, show_section, show_button_content, back_to_main,
+    rebuild_section_map, rebuild_button_map
 )
 from handlers.add_content import (
     add_content_start, select_section, new_section, cancel_adding,
@@ -51,6 +53,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "admin_delete_section_yes":
         logger.info(f"✅ Подтверждение удаления раздела")
         await admin_delete_section_yes(update, context)
+        # После удаления раздела обновляем карты
+        rebuild_section_map(context)
+        rebuild_button_map(context)
     
     # Запрос на удаление раздела
     elif data.startswith("admin_delete_section_"):
@@ -62,8 +67,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "admin_delete_yes":
         logger.info(f"✅ Подтверждение удаления кнопки")
         await admin_delete_yes(update, context)
+        # После удаления кнопки обновляем карту кнопок
+        rebuild_button_map(context)
     
-    # Запрос на удаление кнопки (исключаем специальные случаи)
+    # Запрос на удаление кнопки
     elif data.startswith("admin_delete_") and not any([
         data.startswith("admin_delete_section_"),
         data.startswith("admin_delete_photo_"),
@@ -75,40 +82,61 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await admin_delete_confirm(update, context)
     
     # ======================== РЕДАКТИРОВАНИЕ МЕДИА ========================
-    # Удаление фото
     elif data.startswith("admin_delete_photo_"):
         await admin_delete_photo(update, context)
     
-    # Удаление всех фото
     elif data == "admin_delete_all_photos":
         await admin_delete_all_photos(update, context)
     
-    # Удаление видео
     elif data.startswith("admin_delete_video_"):
         await admin_delete_video(update, context)
     
-    # Удаление всех видео
     elif data == "admin_delete_all_videos":
         await admin_delete_all_videos(update, context)
     
-    # Добавление фото
     elif data == "admin_add_photo":
         await admin_add_photo(update, context)
     
-    # Добавление видео
     elif data == "admin_add_video":
         await admin_add_video(update, context)
     
     # ======================== МЕНЮ РАЗДЕЛОВ ========================
     elif data.startswith("section_"):
         short_key = data.replace("section_", "")
-        section_id = context.bot_data.get('section_map', {}).get(short_key)
+        
+        # ОТЛАДКА: выводим всю карту разделов
+        logger.info(f"🔍 Поиск раздела по ключу: {short_key}")
+        section_map = context.bot_data.get('section_map', {})
+        logger.info(f"📋 Текущая карта разделов: {section_map}")
+        
+        section_id = section_map.get(short_key)
+        
         if section_id:
-            logger.info(f"📁 Открытие раздела: {section_id}")
-            await show_section(update, context, section_id)
+            logger.info(f"✅ Найден раздел: {section_id}")
+            # Проверяем, существует ли раздел в базе
+            if section_id in db.data.sections:
+                logger.info(f"📁 Открытие раздела: {db.data.sections[section_id].name}")
+                await show_section(update, context, section_id)
+            else:
+                logger.error(f"❌ Раздел {section_id} есть в карте, но нет в базе!")
+                # Обновляем карту и пробуем снова
+                rebuild_section_map(context)
+                await query.edit_message_text("❌ Раздел не найден в базе данных. Попробуйте еще раз.")
         else:
-            logger.error(f"❌ Раздел не найден по ключу: {short_key}")
-            await query.edit_message_text("❌ Раздел не найден")
+            logger.error(f"❌ Ключ {short_key} не найден в карте")
+            logger.info(f"🔄 Пробуем обновить карту...")
+            
+            # Пробуем обновить карту
+            rebuild_section_map(context)
+            
+            # Пробуем еще раз
+            section_id = context.bot_data.get('section_map', {}).get(short_key)
+            if section_id:
+                logger.info(f"✅ После обновления ключ найден: {section_id}")
+                await show_section(update, context, section_id)
+            else:
+                logger.error(f"❌ Ключ {short_key} все еще не найден после обновления")
+                await query.edit_message_text("❌ Раздел не найден. Попробуйте обновить меню через /start")
     
     # ======================== МЕНЮ КНОПОК ========================
     elif data.startswith("button_"):
