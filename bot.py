@@ -20,7 +20,7 @@ from telegram.ext import (
 
 from config import BOT_TOKEN, BOT_NAME, BOT_VERSION, GROUP_CHAT_ID, TOPIC_PUBLIC_ID, TOPIC_ADMIN_ID, ADMIN_ID
 from database import db
-from handlers.common import start, help_command, infa_command, error_handler
+from handlers.common import start, help_command, infa_command, backup_command, error_handler
 from handlers.callbacks import callback_handler
 from handlers.add_content import (
     add_content_start, select_section, new_section, create_section,
@@ -66,6 +66,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("infa", infa_command))
+    application.add_handler(CommandHandler("backup", backup_command))  # Новая команда
     
     # ======================== ДОБАВЛЕНИЕ КОНТЕНТА (Conversation) ========================
     add_content_conv = ConversationHandler(
@@ -210,6 +211,7 @@ def main():
     logger.info(f"📌 Топик 1 (публичный): {TOPIC_PUBLIC_ID}")
     logger.info(f"📌 Топик 2 (infa): {TOPIC_ADMIN_ID}")
     logger.info(f"👑 Админ ID: {ADMIN_ID}")
+    logger.info(f"💾 Данные сохраняются в: {DATA_FILE}")
     logger.info("=" * 40)
     
     application.run_polling(allowed_updates=Update.ALL_TYPES)
