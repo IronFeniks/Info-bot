@@ -196,8 +196,20 @@ async def show_button_content(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Отправляем контент
     await send_content(update, context, section_id, button_id)
     
-    # Показываем меню раздела
-    await show_section(update, context, section_id)
+    # Создаем кнопки навигации
+    keyboard = [
+        [InlineKeyboardButton("◀️ Назад к разделу", callback_data=f"section_{shorten_id(section_id)}")],
+        [InlineKeyboardButton("🏠 Завершить (в главное меню)", callback_data="back_to_main")]
+    ]
+    
+    # Отправляем сообщение с кнопками
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text="📌 **Что дальше?**\n\nВыберите действие:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+        message_thread_id=update.effective_message.message_thread_id
+    )
 
 
 async def back_to_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
