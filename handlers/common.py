@@ -13,6 +13,7 @@ from config import (
 )
 from database import db
 from utils.helpers import get_main_keyboard
+from handlers.menu import rebuild_button_map
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,10 @@ async def check_access(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
     
     message_thread_id = message.message_thread_id
     user_id = update.effective_user.id
+    
+    # ОТЛАДКА: выводим значения
+    logger.info(f"🔍 Проверка доступа: chat={message.chat_id}, topic={message_thread_id}, "
+                f"PUBLIC={TOPIC_PUBLIC_ID}, ADMIN={TOPIC_ADMIN_ID}")
     
     # Для администратора разрешены оба топика
     if user_id == ADMIN_ID:
@@ -99,6 +104,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def infa_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Команда /infa - только для администратора в Топике 2
+    Формат: /infa Название кнопки
     """
     if not await check_access(update, context):
         return
@@ -115,7 +121,7 @@ async def infa_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Команда /infa работает только во втором топике.")
         return
     
-    # Получаем название кнопки
+    # Получаем название кнопки из аргументов
     args = context.args
     if not args:
         await update.message.reply_text(
@@ -125,17 +131,40 @@ async def infa_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     button_name = " ".join(args)
+    logger.info(f"🔍 Поиск кнопки по названию: '{button_name}'")
     
-    # Ищем кнопку
+    # Принудительно перестраиваем карту кнопок для актуальности данных
+    rebuild_button_map(context)
+    
+    # Ищем кнопку по названию
     result = db.data.find_button_by_name(button_name)
     
     if not result:
+        # Пробуем искать без учета регистра и лишних пробелов
+        button_name_clean = button_name.strip().lower()
+        for section in db.data.sections.values():
+            for btn_id, button in section.buttons.items():
+                if button.name.strip().lower() == button_name_clean:
+                    result = (section.id, btn_id, button)
+                    logger.info(f"✅ Найдено по точному совпадению без учета регистра: {button.name}")
+                    break
+            if result:
+                break
+    
+    if not result:
+        # Для отладки выводим все доступные кнопки
+        logger.info("📋 Все доступные кнопки в базе:")
+        for section in db.data.sections.values():
+            for button in section.buttons.values():
+                logger.info(f"  • {button.name} (ID: {button.id})")
+        
         await update.message.reply_text(f"❌ Кнопка '{button_name}' не найдена.")
         return
     
     section_id, button_id, button = result
+    logger.info(f"✅ Найдена кнопка: {button.name} в разделе {db.data.sections[section_id].name}")
     
-    # Отправляем контент
+    # Отправляем контент в текущий топик (Топик 2)
     from utils.helpers import send_content
     await send_content(update, context, section_id, button_id)
 
