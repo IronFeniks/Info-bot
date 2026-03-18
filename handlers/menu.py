@@ -9,7 +9,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from database import db
-from handlers.common import check_access, is_admin
+# Импортируем функции, а не из common
 from utils.helpers import safe_edit_message, send_content, get_main_keyboard
 
 logger = logging.getLogger(__name__)
@@ -112,6 +112,8 @@ async def show_sections(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard.append(action_row)
     
     # Для админа добавляем кнопку управления
+    # Используем is_admin из common, импортируем здесь
+    from handlers.common import is_admin
     if is_admin(user.id):
         keyboard.append([InlineKeyboardButton(
             "🔧 Управление",
@@ -159,6 +161,7 @@ async def show_section(update: Update, context: ContextTypes.DEFAULT_TYPE, secti
     
     # Добавляем кнопку добавления (если пользователь админ)
     user = update.effective_user
+    from handlers.common import is_admin
     if is_admin(user.id):
         keyboard.append([InlineKeyboardButton(
             "➕ Добавить кнопку в этот раздел",
