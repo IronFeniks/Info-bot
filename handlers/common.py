@@ -1,202 +1,220 @@
 """
-Общие обработчики
+Обработчики меню и навигации
 """
 
 import logging
+import hashlib
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from config import (
-    ADMIN_ID, GROUP_CHAT_ID, TOPIC_PUBLIC_ID, TOPIC_ADMIN_ID,
-    WELCOME_MESSAGE, HELP_MESSAGE, BOT_NAME
-)
 from database import db
-from utils.helpers import get_main_keyboard
-from handlers.menu import rebuild_button_map
+# Импортируем функции, а не из common
+from utils.helpers import safe_edit_message, send_content, get_main_keyboard
 
 logger = logging.getLogger(__name__)
 
 
-async def check_access(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+def shorten_id(id_string: str) -> str:
     """
-    Проверяет доступ пользователя к боту в текущем топике
+    Сокращает длинный UUID до короткого хеша (8 символов)
     """
-    message = update.effective_message
-    if not message:
-        return False
+    return hashlib.md5(id_string.encode()).hexdigest()[:8]
+
+
+def rebuild_section_map(context):
+    """
+    Восстанавливает карту соответствий коротких ключей и ID разделов
+    """
+    if 'section_map' not in context.bot_data:
+        context.bot_data['section_map'] = {}
     
-    # Логируем ВСЕ входящие сообщения для отладки
+    # Очищаем старую карту
+    context.bot_data['section_map'].clear()
+    
+    # Заполняем карту для всех существующих разделов
+    for section in db.data.sections.values():
+        short_key = shorten_id(section.id)
+        context.bot_data['section_map'][short_key] = section.id
+        logger.info(f"🔄 Карта разделов: {short_key} -> {section.name} (ID: {section.id})")
+    
+    logger.info(f"✅ Карта разделов обновлена: {len(context.bot_data['section_map'])} разделов")
+    return context.bot_data['section_map']
+
+
+def rebuild_button_map(context):
+    """
+    Восстанавливает карту соответствий для кнопок
+    """
+    if 'button_map' not in context.bot_data:
+        context.bot_data['button_map'] = {}
+    
+    # Очищаем старую карту
+    context.bot_data['button_map'].clear()
+    
+    # Заполняем карту для всех существующих кнопок
+    for section in db.data.sections.values():
+        short_section = shorten_id(section.id)
+        for button in section.buttons.values():
+            short_button = shorten_id(button.id)
+            map_key = f"{short_section}_{short_button}"
+            context.bot_data['button_map'][map_key] = {
+                'section_id': section.id,
+                'button_id': button.id
+            }
+            logger.info(f"🔄 Карта кнопок: {map_key} -> {button.name}")
+    
+    logger.info(f"✅ Карта кнопок обновлена: {len(context.bot_data['button_map'])} кнопок")
+    return context.bot_data['button_map']
+
+
+async def force_rebuild_maps(context):
+    """Принудительно перестраивает все карты"""
+    rebuild_section_map(context)
+    rebuild_button_map(context)
+    logger.info("✅ Все карты принудительно перестроены")
+    return True
+
+
+async def show_sections(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает список разделов (главное меню)"""
+    query = update.callback_query
     user = update.effective_user
-    chat = update.effective_chat
     
-    logger.info(f"📨 Входящее сообщение: chat_id={message.chat_id}, "
-                f"chat_type={chat.type if chat else 'unknown'}, "
-                f"thread_id={message.message_thread_id}, "
-                f"user_id={user.id if user else 'None'}, "
-                f"username=@{user.username if user and user.username else 'None'}, "
-                f"text={message.text if message.text else 'non-text'}")
+    # Восстанавливаем карту разделов перед показом
+    rebuild_section_map(context)
     
-    # Проверяем, что сообщение из нужной группы
-    if message.chat_id != GROUP_CHAT_ID:
-        logger.warning(f"Попытка использования из чата {message.chat_id}")
-        return False
+    # Создаем клавиатуру с разделами
+    keyboard = []
     
-    message_thread_id = message.message_thread_id
-    user_id = update.effective_user.id
+    # Добавляем кнопки разделов
+    for section in db.data.sections.values():
+        # Создаем короткий ключ
+        short_key = shorten_id(section.id)
+        
+        callback_data = f"section_{short_key}"
+        logger.info(f"🔧 Создана кнопка раздела: {callback_data} -> {section.name}")
+        keyboard.append([InlineKeyboardButton(
+            f"📁 {section.name}",
+            callback_data=callback_data
+        )])
     
-    # ОТЛАДКА: выводим значения
-    logger.info(f"🔍 Проверка доступа: chat={message.chat_id}, topic={message_thread_id}, "
-                f"PUBLIC={TOPIC_PUBLIC_ID}, ADMIN={TOPIC_ADMIN_ID}")
+    # Добавляем функциональные кнопки
+    action_row = []
+    action_row.append(InlineKeyboardButton(
+        "➕ Добавить инфу",
+        callback_data="add_content_start"
+    ))
+    action_row.append(InlineKeyboardButton(
+        "🆘 Вызов администратора",
+        callback_data="call_admin"
+    ))
+    keyboard.append(action_row)
     
-    # Для администратора разрешены оба топика
-    if user_id == ADMIN_ID:
-        if message_thread_id in (TOPIC_PUBLIC_ID, TOPIC_ADMIN_ID):
-            logger.info(f"✅ Доступ разрешен админу в топике {message_thread_id}")
-            return True
-        else:
-            logger.warning(f"Админ попытался использовать топик {message_thread_id}")
-            return False
+    # Для админа добавляем кнопку управления
+    # Используем is_admin из common, импортируем здесь
+    from handlers.common import is_admin
+    if is_admin(user.id):
+        keyboard.append([InlineKeyboardButton(
+            "🔧 Управление",
+            callback_data="admin_panel"
+        )])
     
-    # Для обычных пользователей только публичный топик
-    if message_thread_id == TOPIC_PUBLIC_ID:
-        logger.info(f"✅ Доступ разрешен пользователю в публичном топике")
-        return True
-    else:
-        logger.warning(f"Пользователь {user_id} попытался использовать топик {message_thread_id}")
-        return False
-
-
-def is_admin(user_id: int) -> bool:
-    """Проверяет, является ли пользователь администратором"""
-    return user_id == ADMIN_ID
-
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /start"""
-    if not await check_access(update, context):
-        await update.message.reply_text(
-            "⛔ Доступ запрещен. Бот работает только в определенных топиках."
-        )
-        return
-    
-    user = update.effective_user
-    admin_status = is_admin(user.id)
-    
-    await update.message.reply_text(
-        WELCOME_MESSAGE.format(name=BOT_NAME),
-        reply_markup=get_main_keyboard(admin_status),
-        parse_mode="Markdown"
+    await safe_edit_message(
+        query,
+        "📋 **Главное меню**\n\nВыберите раздел:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /help"""
-    if not await check_access(update, context):
+async def show_section(update: Update, context: ContextTypes.DEFAULT_TYPE, section_id: str):
+    """Показывает кнопки внутри раздела"""
+    query = update.callback_query
+    
+    logger.info(f"🔍 Поиск раздела с ID: {section_id}")
+    section = db.data.sections.get(section_id)
+    
+    if not section:
+        logger.error(f"❌ Раздел не найден: {section_id}")
+        await query.edit_message_text("❌ Раздел не найден")
+        await show_sections(update, context)
         return
     
-    await update.message.reply_text(
-        HELP_MESSAGE,
-        parse_mode="Markdown"
-    )
-
-
-async def infa_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Команда /infa - только для администратора в Топике 2
-    Формат: /infa Название кнопки
-    """
-    if not await check_access(update, context):
-        return
+    logger.info(f"✅ Раздел найден: {section.name}")
     
-    user_id = update.effective_user.id
-    
-    # Проверяем, что это админ
-    if not is_admin(user_id):
-        await update.message.reply_text("⛔ Эта команда только для администратора.")
-        return
-    
-    # Проверяем, что команда вызвана в Топике 2
-    if update.effective_message.message_thread_id != TOPIC_ADMIN_ID:
-        await update.message.reply_text("⛔ Команда /infa работает только во втором топике.")
-        return
-    
-    # Получаем название кнопки из аргументов
-    args = context.args
-    if not args:
-        await update.message.reply_text(
-            "❌ Использование: /infa Название кнопки\n\n"
-            "Пример: /infa Борщ"
-        )
-        return
-    
-    button_name = " ".join(args)
-    logger.info(f"🔍 Поиск кнопки по названию: '{button_name}'")
-    
-    # Принудительно перестраиваем карту кнопок для актуальности данных
+    # Восстанавливаем карту кнопок
     rebuild_button_map(context)
     
-    # Ищем кнопку по названию
-    result = db.data.find_button_by_name(button_name)
-    
-    if not result:
-        # Пробуем искать без учета регистра и лишних пробелов
-        button_name_clean = button_name.strip().lower()
-        for section in db.data.sections.values():
-            for btn_id, button in section.buttons.items():
-                if button.name.strip().lower() == button_name_clean:
-                    result = (section.id, btn_id, button)
-                    logger.info(f"✅ Найдено по точному совпадению без учета регистра: {button.name}")
-                    break
-            if result:
-                break
-    
-    if not result:
-        # Для отладки выводим все доступные кнопки
-        logger.info("📋 Все доступные кнопки в базе:")
-        for section in db.data.sections.values():
-            for button in section.buttons.values():
-                logger.info(f"  • {button.name} (ID: {button.id})")
+    # Формируем клавиатуру с кнопками раздела
+    keyboard = []
+    for button in section.buttons.values():
+        # Создаем короткий ключ для кнопки
+        short_section = shorten_id(section.id)
+        short_button = shorten_id(button.id)
+        map_key = f"{short_section}_{short_button}"
         
-        await update.message.reply_text(f"❌ Кнопка '{button_name}' не найдена.")
+        callback_data = f"button_{map_key}"
+        keyboard.append([InlineKeyboardButton(
+            f"🔘 {button.name}",
+            callback_data=callback_data
+        )])
+    
+    # Добавляем кнопку добавления (если пользователь админ)
+    user = update.effective_user
+    from handlers.common import is_admin
+    if is_admin(user.id):
+        keyboard.append([InlineKeyboardButton(
+            "➕ Добавить кнопку в этот раздел",
+            callback_data=f"add_in_section_{section.id}"
+        )])
+    
+    keyboard.append([InlineKeyboardButton(
+        "◀️ Назад к разделам",
+        callback_data="back_to_main"
+    )])
+    
+    await safe_edit_message(
+        query,
+        f"📁 **Раздел: {section.name}**\n\nВыберите пункт:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def show_button_content(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                              section_id: str, button_id: str):
+    """Показывает контент кнопки"""
+    query = update.callback_query
+    await query.answer()
+    
+    section = db.data.sections.get(section_id)
+    if not section:
+        await query.message.reply_text("❌ Раздел не найден")
         return
     
-    section_id, button_id, button = result
-    logger.info(f"✅ Найдена кнопка: {button.name} в разделе {db.data.sections[section_id].name}")
+    button = section.buttons.get(button_id)
+    if not button:
+        await query.message.reply_text("❌ Кнопка не найдена")
+        return
     
-    # Отправляем контент в текущий топик (Топик 2)
-    from utils.helpers import send_content
+    # Отправляем контент
     await send_content(update, context, section_id, button_id)
+    
+    # Создаем кнопки навигации
+    keyboard = [
+        [InlineKeyboardButton("◀️ Назад к разделу", callback_data=f"section_{shorten_id(section_id)}")],
+        [InlineKeyboardButton("🏠 Завершить (в главное меню)", callback_data="back_to_main")]
+    ]
+    
+    # Отправляем сообщение с кнопками
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text="📌 **Что дальше?**\n\nВыберите действие:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+        message_thread_id=update.effective_message.message_thread_id
+    )
 
 
-async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Команда /backup - отправляет копию базы данных админу
-    """
-    if not await check_access(update, context):
-        return
-    
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("⛔ Только для администратора")
-        return
-    
-    await update.message.reply_text("🔄 Создание бэкапа...")
-    success = await db.auto_backup(context)
-    
-    if success:
-        await update.message.reply_text("✅ Бэкап отправлен в личные сообщения")
-    else:
-        await update.message.reply_text("❌ Ошибка создания бэкапа")
-
-
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик ошибок"""
-    logger.error(f"❌ Ошибка: {context.error}", exc_info=context.error)
-    
-    try:
-        if update and update.effective_message:
-            await update.effective_message.reply_text(
-                "❌ Произошла внутренняя ошибка. Администратор уже уведомлен."
-            )
-    except:
-        pass
+async def back_to_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Возврат в главное меню"""
+    await show_sections(update, context)
