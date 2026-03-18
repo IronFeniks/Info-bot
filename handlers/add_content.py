@@ -30,11 +30,21 @@ logger = logging.getLogger(__name__)
 
 async def add_content_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало процесса добавления контента"""
-    query = update.callback_query
-    await query.answer()
+    # Проверяем, есть ли query (может быть вызвано не из callback)
+    if update.callback_query:
+        query = update.callback_query
+        await query.answer()
+        message = query.message
+        chat_id = query.message.chat_id
+        message_thread_id = query.message.message_thread_id
+    else:
+        # Если нет query, значит это прямое сообщение
+        message = update.effective_message
+        chat_id = message.chat_id
+        message_thread_id = message.message_thread_id
     
     if not await check_access(update, context):
-        await query.edit_message_text("⛔ Доступ запрещен")
+        await message.reply_text("⛔ Доступ запрещен")
         return ConversationHandler.END
     
     # Сохраняем временные данные
@@ -61,12 +71,21 @@ async def add_content_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         callback_data="back_to_main"
     )])
     
-    await safe_edit_message(
-        query,
-        "🆕 **ДОБАВЛЕНИЕ НОВОЙ ИНФОРМАЦИИ**\n\n"
-        "Шаг 1 из 4: Выберите раздел для новой кнопки:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    # Если есть query, редактируем сообщение, иначе отправляем новое
+    if update.callback_query:
+        await safe_edit_message(
+            query,
+            "🆕 **ДОБАВЛЕНИЕ НОВОЙ ИНФОРМАЦИИ**\n\n"
+            "Шаг 1 из 4: Выберите раздел для новой кнопки:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    else:
+        await message.reply_text(
+            "🆕 **ДОБАВЛЕНИЕ НОВОЙ ИНФОРМАЦИИ**\n\n"
+            "Шаг 1 из 4: Выберите раздел для новой кнопки:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
     
     return SELECTING_SECTION
 
@@ -209,14 +228,18 @@ async def enter_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def skip_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Пропуск ввода текста"""
-    query = update.callback_query
-    await query.answer()
-    
-    await safe_edit_message(
-        query,
-        "⏭ Текст пропущен.",
-        reply_markup=None
-    )
+    # Проверяем, есть ли query
+    if update.callback_query:
+        query = update.callback_query
+        await query.answer()
+        
+        await safe_edit_message(
+            query,
+            "⏭ Текст пропущен.",
+            reply_markup=None
+        )
+    else:
+        await update.effective_message.reply_text("⏭ Текст пропущен.")
     
     # Переходим к добавлению медиа
     await show_media_menu(update, context)
@@ -476,15 +499,21 @@ async def finish_adding(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cancel_adding(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отмена добавления"""
-    query = update.callback_query
-    await query.answer()
+    if update.callback_query:
+        query = update.callback_query
+        await query.answer()
+        
+        await safe_edit_message(
+            query,
+            "❌ Добавление отменено.",
+            reply_markup=get_back_button("back_to_main")
+        )
+    else:
+        await update.effective_message.reply_text(
+            "❌ Добавление отменено.",
+            reply_markup=get_back_button("back_to_main")
+        )
     
     context.user_data.pop('adding_content', None)
-    
-    await safe_edit_message(
-        query,
-        "❌ Добавление отменено.",
-        reply_markup=get_back_button("back_to_main")
-    )
     
     return ConversationHandler.END
