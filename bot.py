@@ -19,7 +19,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
     ConversationHandler,
-    ContextTypes  # <--- ДОБАВЛЕН ИМПОРТ
+    ContextTypes
 )
 
 from config import (
@@ -321,8 +321,8 @@ def main():
     # Запускаем с увеличенным интервалом между запросами
     application.run_polling(
         allowed_updates=Update.ALL_TYPES,
-        poll_interval=1.0,  # Увеличиваем интервал
-        timeout=30  # Увеличиваем таймаут
+        poll_interval=1.0,
+        timeout=30
     )
 
 
@@ -334,5 +334,4 @@ if __name__ == "__main__":
         logger.info("👋 Бот остановлен пользователем")
     except Exception as e:
         logger.error(f"❌ Критическая ошибка: {e}")
-        # Даем время на запись лога
         time.sleep(2)
