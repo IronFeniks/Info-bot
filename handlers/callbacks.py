@@ -33,13 +33,17 @@ logger = logging.getLogger(__name__)
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Главный обработчик всех callback-запросов"""
+    if not update.callback_query:
+        return
+    
     query = update.callback_query
     await query.answer()
     
-    # Проверяем доступ
     if not await check_access(update, context):
         await query.edit_message_text("⛔ Доступ запрещен")
         return
+    
+    # остальной код без изменений...
     
     data = query.data
     logger.info(f"📨 Callback получен: {data}")
