@@ -89,11 +89,12 @@ async def show_sections(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Добавляем кнопки разделов
     for section in db.data.sections.values():
-        # Создаем короткий ключ
+        # Создаем короткий ключ (хеш 8 символов)
         short_key = shorten_id(section.id)
         
+        # Сохраняем в карту (уже сделано в rebuild_section_map)
         callback_data = f"section_{short_key}"
-        logger.info(f"🔧 Создана кнопка раздела: {callback_data} -> {section.name}")
+        logger.info(f"🔧 Создана кнопка раздела: {callback_data} -> {section.name} (ID: {section.id})")
         keyboard.append([InlineKeyboardButton(
             f"📁 {section.name}",
             callback_data=callback_data
@@ -112,8 +113,6 @@ async def show_sections(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard.append(action_row)
     
     # Для админа добавляем кнопку управления
-    # Используем is_admin из common, импортируем здесь
-    from handlers.common import is_admin
     if is_admin(user.id):
         keyboard.append([InlineKeyboardButton(
             "🔧 Управление",
