@@ -30,18 +30,22 @@ logger = logging.getLogger(__name__)
 
 async def add_content_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало процесса добавления контента"""
-    # Проверяем, есть ли query (может быть вызвано не из callback)
+    # Проверяем наличие message и callback_query
+    if not update.effective_message:
+        return ConversationHandler.END
+    
     if update.callback_query:
         query = update.callback_query
         await query.answer()
         message = query.message
     else:
-        # Если нет query, значит это прямое сообщение
         message = update.effective_message
     
     if not await check_access(update, context):
         await message.reply_text("⛔ Доступ запрещен")
         return ConversationHandler.END
+    
+    # остальной код без изменений...
     
     # Сохраняем временные данные
     context.user_data['adding_content'] = {
