@@ -11,7 +11,7 @@ from database import db
 from handlers.common import check_access
 from handlers.menu import (
     show_sections, show_section, show_button_content, back_to_main,
-    rebuild_section_map, rebuild_button_map
+    rebuild_section_map, rebuild_button_map, shorten_id
 )
 from handlers.add_content import (
     add_content_start, select_section, new_section, cancel_adding,
@@ -99,11 +99,25 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # ======================== МЕНЮ РАЗДЕЛОВ ========================
     elif data.startswith("section_"):
+        # Извлекаем короткий ключ (8 символов)
         short_key = data.replace("section_", "")
         
         logger.info(f"🔍 Поиск раздела по короткому ключу: {short_key}")
-        section_map = context.bot_data.get('section_map', {})
         
+        # Проверяем, не является ли это полным UUID (старый формат)
+        if len(short_key) > 10:  # UUID длиннее 10 символов
+            logger.warning(f"⚠️ Получен длинный ключ: {short_key}, возможно старый формат")
+            # Пробуем найти раздел по полному ID
+            section_id = short_key
+            if section_id in db.data.sections:
+                logger.info(f"✅ Найден раздел по полному ID: {section_id}")
+                await show_section(update, context, section_id)
+                return
+            else:
+                logger.error(f"❌ Раздел не найден по полному ID: {section_id}")
+        
+        # Ищем по короткому ключу в карте
+        section_map = context.bot_data.get('section_map', {})
         section_id = section_map.get(short_key)
         
         if section_id:
@@ -117,6 +131,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.edit_message_text("❌ Раздел не найден. Попробуйте обновить меню через /start")
         else:
             logger.error(f"❌ Ключ {short_key} не найден в карте")
+            logger.info(f"📋 Доступные ключи: {list(section_map.keys())}")
             rebuild_section_map(context)
             section_id = context.bot_data.get('section_map', {}).get(short_key)
             if section_id:
