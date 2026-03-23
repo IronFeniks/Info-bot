@@ -104,44 +104,45 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "admin_add_video":
         await admin_add_video(update, context)
     
-    # ======================== МЕНЮ РАЗДЕЛОВ ========================
-    elif data.startswith("section_"):
-        short_key = data.replace("section_", "")
-        
-        # ОТЛАДКА: выводим всю карту разделов
-        logger.info(f"🔍 Поиск раздела по ключу: {short_key}")
-        section_map = context.bot_data.get('section_map', {})
-        logger.info(f"📋 Текущая карта разделов: {section_map}")
-        
-        section_id = section_map.get(short_key)
-        
-        if section_id:
-            logger.info(f"✅ Найден раздел: {section_id}")
-            # Проверяем, существует ли раздел в базе
-            if section_id in db.data.sections:
-                logger.info(f"📁 Открытие раздела: {db.data.sections[section_id].name}")
-                await show_section(update, context, section_id)
-            else:
-                logger.error(f"❌ Раздел {section_id} есть в карте, но нет в базе!")
-                # Обновляем карту и пробуем снова
-                rebuild_section_map(context)
-                await query.edit_message_text("❌ Раздел не найден в базе данных. Попробуйте еще раз.")
-        else:
-            logger.error(f"❌ Ключ {short_key} не найден в карте")
-            logger.info(f"🔄 Пробуем обновить карту...")
-            
-            # Пробуем обновить карту
-            rebuild_section_map(context)
-            
-            # Пробуем еще раз
-            section_id = context.bot_data.get('section_map', {}).get(short_key)
-            if section_id:
-                logger.info(f"✅ После обновления ключ найден: {section_id}")
-                await show_section(update, context, section_id)
-            else:
-                logger.error(f"❌ Ключ {short_key} все еще не найден после обновления")
-                await query.edit_message_text("❌ Раздел не найден. Попробуйте обновить меню через /start")
+# ======================== МЕНЮ РАЗДЕЛОВ ========================
+elif data.startswith("section_"):
+    # Извлекаем короткий ключ (8 символов)
+    short_key = data.replace("section_", "")
     
+    logger.info(f"🔍 Поиск раздела по короткому ключу: {short_key}")
+    section_map = context.bot_data.get('section_map', {})
+    logger.info(f"📋 Доступные ключи: {list(section_map.keys())}")
+    
+    # Ищем по короткому ключу
+    section_id = section_map.get(short_key)
+    
+    if section_id:
+        logger.info(f"✅ Найден раздел по ключу {short_key} -> {section_id}")
+        # Проверяем существование в базе
+        if section_id in db.data.sections:
+            logger.info(f"📁 Открытие раздела: {db.data.sections[section_id].name}")
+            await show_section(update, context, section_id)
+        else:
+            logger.error(f"❌ Раздел {section_id} есть в карте, но нет в базе!")
+            # Обновляем карту
+            from handlers.menu import rebuild_section_map
+            rebuild_section_map(context)
+            await query.edit_message_text("❌ Раздел не найден. Попробуйте обновить меню через /start")
+    else:
+        logger.error(f"❌ Ключ {short_key} не найден в карте")
+        # Пробуем обновить карту
+        from handlers.menu import rebuild_section_map
+        rebuild_section_map(context)
+        
+        # Пробуем еще раз
+        section_id = context.bot_data.get('section_map', {}).get(short_key)
+        if section_id:
+            logger.info(f"✅ После обновления ключ найден: {section_id}")
+            await show_section(update, context, section_id)
+        else:
+            logger.error(f"❌ Ключ {short_key} все еще не найден после обновления")
+            await query.edit_message_text("❌ Раздел не найден. Попробуйте обновить меню через /start")
+            
     # ======================== МЕНЮ КНОПОК ========================
     elif data.startswith("button_"):
         map_key = data.replace("button_", "")
