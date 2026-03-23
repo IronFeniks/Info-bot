@@ -87,13 +87,11 @@ async def show_sections(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Создаем клавиатуру с разделами
     keyboard = []
     
-    # Добавляем кнопки разделов
+    # Добавляем кнопки разделов - ИСПОЛЬЗУЕМ КОРОТКИЙ КЛЮЧ
     for section in db.data.sections.values():
-        # Создаем короткий ключ (хеш 8 символов)
         short_key = shorten_id(section.id)
-        
         callback_data = f"section_{short_key}"
-        logger.info(f"🔧 Создана кнопка раздела: {callback_data} -> {section.name} (ID: {section.id})")
+        logger.info(f"🔧 Создана кнопка раздела: {callback_data} -> {section.name}")
         keyboard.append([InlineKeyboardButton(
             f"📁 {section.name}",
             callback_data=callback_data
@@ -196,7 +194,7 @@ async def show_button_content(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Отправляем контент
     await send_content(update, context, section_id, button_id)
     
-    # Создаем кнопки навигации
+    # Используем короткий ключ для кнопки "Назад"
     short_section = shorten_id(section_id)
     keyboard = [
         [InlineKeyboardButton("◀️ Назад к разделу", callback_data=f"section_{short_section}")],
