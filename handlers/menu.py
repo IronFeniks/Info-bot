@@ -9,8 +9,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from database import db
-# Импортируем функции, а не из common
-from utils.helpers import safe_edit_message, send_content, get_main_keyboard
+from handlers.common import check_access, is_admin
+from utils.helpers import safe_edit_message, send_content
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +92,6 @@ async def show_sections(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Создаем короткий ключ (хеш 8 символов)
         short_key = shorten_id(section.id)
         
-        # Сохраняем в карту (уже сделано в rebuild_section_map)
         callback_data = f"section_{short_key}"
         logger.info(f"🔧 Создана кнопка раздела: {callback_data} -> {section.name} (ID: {section.id})")
         keyboard.append([InlineKeyboardButton(
@@ -160,7 +159,6 @@ async def show_section(update: Update, context: ContextTypes.DEFAULT_TYPE, secti
     
     # Добавляем кнопку добавления (если пользователь админ)
     user = update.effective_user
-    from handlers.common import is_admin
     if is_admin(user.id):
         keyboard.append([InlineKeyboardButton(
             "➕ Добавить кнопку в этот раздел",
@@ -199,8 +197,9 @@ async def show_button_content(update: Update, context: ContextTypes.DEFAULT_TYPE
     await send_content(update, context, section_id, button_id)
     
     # Создаем кнопки навигации
+    short_section = shorten_id(section_id)
     keyboard = [
-        [InlineKeyboardButton("◀️ Назад к разделу", callback_data=f"section_{shorten_id(section_id)}")],
+        [InlineKeyboardButton("◀️ Назад к разделу", callback_data=f"section_{short_section}")],
         [InlineKeyboardButton("🏠 Завершить (в главное меню)", callback_data="back_to_main")]
     ]
     
